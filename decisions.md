@@ -1,0 +1,102 @@
+# Decisions
+
+Decisions made while carrying out `PLAN.md`, with the reason for each. Measurements the plan asks to record are kept here too, under Measurements.
+
+## Working setup
+
+- `PLAN.md` stays uncommitted, as asked. This file records what the plan says to record "in this file".
+- Nothing is pushed. gesso, gtube and streamit commits stay local, so the GitHub CI workflows the plan calls for are written but have not run. Local runs on the reference machines stand in for them.
+- streamit depends on gesso by path (`../gesso`) while gesso's commits are local; it switches to a pinned URL when gesso is pushed. gtube is built against local gesso with `zig build --fork=../gesso` for the same reason.
+- gtube's working tree holds another session's uncommitted Bend work (`src/bend/`, `src/viz.c`, `README.md`). Commits in gtube stage only the files this work changes.
+- gesso's working tree holds an uncommitted README edit (the Principles section) from another session. gesso commits stage only the files this work changes, and README additions for new modules are made around that edit.
+
+## Reference machines
+
+| System | Machine | GPU | Hardware H.264 decoding |
+|---|---|---|---|
+| Linux | this host (Fedora 44) | NVIDIA RTX 3090, proprietary driver 615.71 | VAAPI through `libva-nvidia-driver` |
+| Linux | hpbook (Fedora 44 laptop) | AMD Renoir (Radeon Vega), Mesa 26.1 | none: Fedora's Mesa is built without H.264 (`No support for codec h264 profile 100`); needs `mesa-va-drivers-freeworld` from RPM Fusion |
+| Windows | the Windows PC | NVIDIA RTX 3080 | Direct3D 11 |
+| macOS | none reachable | | |
+
+macOS code paths are written to the platform's documented APIs but cannot be built or run here: gesso's macOS builds need a Mac with Xcode, and no Mac is reachable over SSH.
+
+## Decisions
+
+### Twitch segments come in two formats (2026-10-08)
+
+The plan assumed transport stream segments. Live captures show both: lirik, ohnepixel and nickmercs serve H.264 Main profile renditions as fragmented MP4 (`EXT-X-MAP` initialization segment, `mp42` brand, AAC-LC at 48 kHz), while jynxzi serves H.264 High profile as transport stream. gesso gets a fragmented MP4 demuxer, `gs_mp4`, beside `gs_ts`; both emit H.264 in Annex B form and raw AAC frames, so `gs_video` and `gs_aac` take one input format each. `PLAN.md` is updated to match.
+
+### FFmpeg 9.0.2, generated once per target (2026-10-08)
+
+FFmpeg 9.0.2 (2026-09-18) is the newest release. `ffmpeg/tools/import.sh` in gesso runs its configure with zig cc for Linux x86-64, Windows x86-64 and macOS aarch64 and stores the generated files and source list; `build.zig` compiles 249, 249 and 232 files respectively. NASM comes from `allyourcodebase/nasm`, built by zig for the build host, only when an x86 target needs it. Two workarounds in the import: zig's glibc headers lack `sys/sysctl.h`, so `HAVE_SYSCTL` is cleared on Linux, and small wrappers drop linker flags zig rejects during configure's checks (`--pic-executable` for MinGW, `-dynamic` for macOS).
+
+The macOS configuration cannot run VideoToolbox's configure checks without Apple's SDK, so the import enables VideoToolbox in the generated files afterwards, as `--enable-videotoolbox` does with a current SDK. Unverified until built on a Mac.
+
+### VAAPI without libdrm (2026-10-08)
+
+FFmpeg maps VAAPI frames to DRM descriptors only when built with libdrm. `gs_video` calls `vaExportSurfaceHandle` itself instead, so the Linux build needs only libva and libva-drm, which `ffmpeg/va_loader.c` loads at run time. libva's public headers (MIT) are vendored in `vendor/va`, 22 files.
+
+### VAAPI on NVIDIA through its VAAPI bridge (2026-10-08)
+
+NVIDIA's VAAPI driver (`libva-nvidia-driver` 0.0.18 on this host) decodes through NVDEC and exports dma-bufs that EGL imports, so `gs_video` treats it like any other VAAPI driver. Measured with `zig build bench-video` on the 1080p60 capture, offscreen: VAAPI with EGL display 22% of one core, software decoding 54%, the same picture in both. An earlier hang came from forcing the driver's direct backend (`NVD_BACKEND=direct`), not from the driver's default.
+
+### Renderer and decoding path per platform (M1, 2026-10-08)
+
+| System | Renderer | Decoding | Fallback |
+|---|---|---|---|
+| Linux | `opengles2` (EGL forced) when a render node's VAAPI driver decodes H.264 High profile | VAAPI, dma-bufs imported through EGL | SDL's default renderer and software decoding |
+| Windows | `direct3d11`, with `SDL_HINT_RENDER_DIRECT3D_THREADSAFE` | Direct3D 11 on the renderer's device, copied on the GPU | software decoding on the same renderer |
+| macOS | `metal` | VideoToolbox pixel buffers | software decoding (unverified) |
+
+`gs_video_prepare` makes the choice before the window exists. SDL creates its Direct3D 11 device single-threaded unless asked; with decoding on its own thread that produced `Failed to add bitstream or slice control buffer` and a hang, fixed by the hint. NVIDIA on Linux takes the VAAPI path through `libva-nvidia-driver`; no NVDEC-specific path is needed.
+
+### Parity list (M0, 2026-10-08)
+
+Every control and feature of the Qt build (`app/Main.qml` at `qt-final`), and what the C build does with it.
+
+| Qt build | C build |
+|---|---|
+| Sign-in card: "Sign in with Twitch", the device code, "Open page", "Cancel" | kept |
+| Account button with a popup: "Signed in as", token profile, "Sign out" | kept, in `gs_ui`'s floating layer, without the token profile line |
+| "Search follows" filter field | kept |
+| Sort dropdown: Viewers, Channel, Category, Started | kept, a dropdown in the floating layer |
+| "18+" checkbox for mature channels | kept, a toggle |
+| Shown/total count beside the filters | kept |
+| Cards or compact rows, a button with a tooltip | kept |
+| "Couldn't refresh" warning with the last update time | kept |
+| Empty states: no channels live, none match the filters | kept |
+| Channel card: thumbnail, name, viewers, title, category, state; click to play | kept |
+| Player bar: source label, Stop, Mute, volume slider with percentage, Full/Window | kept |
+| Fullscreen player with the same controls; Esc leaves fullscreen | kept |
+| Settings: Twitch Client ID field and Save | replaced: the built-in client ID, overridable with `--client-id` |
+| Token storage dropdown | dropped: one storage, `gs_secret` |
+| Diagnostics panel (Qt, client ID, token storage, resolver, libmpv) | replaced: the diagnostics overlay (renderer, decoding path, buffer, dropped frames, clock error, memory, CPU) |
+| Dev playback mode (`STREAMIT_DEV_TWITCH_CHANNEL`) | replaced: `--play CHANNEL` |
+
+## Measurements
+
+### M0: the Qt build (2026-10-08)
+
+| Measure | Value |
+|---|---|
+| Linux AppImage | 140 MB (134 MiB) |
+| Linux unpacked AppDir | 369 MB |
+| Windows package folder (`out\windows\StreamIt`) | 195 MB |
+| Windows, playing lirik live (1080p60), libmpv as shipped (software decoding) | 106% of one core, private working set 434 MB average, 453 MB peak |
+
+Measured on the Windows PC in its desktop session with `STREAMIT_DEV_TWITCH_CHANNEL=lirik`, sampling for 20 s after 20 s of start-up. The Qt build has no `hwdec` setting, and libmpv reads no configuration file, so the `hwdec=auto-safe` comparison the plan names would need a rebuilt Qt app; the hardware milestone compares against the shipped figure and against `gs_video`'s own software path instead. Browsing memory for the Qt build is not measured: its demo channel list (`STREAMIT_UI_FIXTURE`) is compiled out of release builds.
+
+### M1: decoding paths (2026-10-08)
+
+`zig build bench-video -Dvideo -- lirik-1080p60.h264`: a 75 s local capture of lirik at 1080p60 (H.264 Main, about 6.9 Mbit/s), looped for 20 s, with the stats overlay drawn each frame. CPU is the share of one core over the run; memory is the figure `gs_stats` reports (private working set on Windows, proportional set size on Linux).
+
+| Machine | Path | CPU | Memory | Shown, dropped |
+|---|---|---|---|---|
+| Windows PC, RTX 3080, desktop | Direct3D 11 | 18.6% | 41 MB | 1155, 61 |
+| Windows PC, RTX 3080, desktop | software | 51.0% | 64 MB | 1185, 24 |
+| this host, RTX 3090, offscreen | VAAPI (NVIDIA driver) | 28.4% | 228 MB | 684, 44 (12 s) |
+| this host, RTX 3090, offscreen | software, `opengl` | 55.3% | 143 MB | 705, 24 (12 s) |
+| hpbook, Ryzen 7 4700U, offscreen | software, `opengl` | 89.1% | 96 MB | 840, 72 (15 s) |
+
+The Linux figures carry NVIDIA's driver: its CUDA context for VAAPI adds about 85 MB of private memory, which the 100 MB playing budget cannot absorb on that hardware. The bench executable, with libavcodec, SDL and gesso, is 5.6 MB for Windows in ReleaseFast. Dropped frames come from a 60 fps stream on a 60 Hz present loop: when two frames fall due in one refresh, one is skipped; M7's smoothness work addresses that.

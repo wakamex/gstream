@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="StreamIt">
+  <rect width="256" height="256" rx="48" fill="#111312"/>
+  <path d="M56 78c0-12 10-22 22-22h100c12 0 22 10 22 22v64c0 12-10 22-22 22h-54l-34 34v-34H78c-12 0-22-10-22-22V78z" fill="#35c2a5"/>
+  <path d="M92 92h72v18H92V92zm0 36h44v18H92v-18z" fill="#111312"/>
+  <circle cx="170" cy="137" r="10" fill="#f2994a"/>
+</svg>
