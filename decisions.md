@@ -150,3 +150,30 @@ Layout is gesso's own rectangle cutting, not Clay. For the channel list's layout
 | Executable, ReleaseFast | 6.24 MB |
 
 Not checked on real hardware: display scale 2 (no high-DPI display is attached to the reference machines; `gs_ui` takes its scale from the window's pixel density), and Japanese typed through a system input method (no keyboard at the machines; the field's composition handling is tested with synthetic input-method events in gesso's tests).
+
+### M6: an hour of live audio (2026-10-08)
+
+Each machine played a live channel audio-only for 3,600 s with `--stats`, which redraws every frame, so CPU here includes drawing the window 60 times a second.
+
+| Machine, channel, sound output | Stalls, skips, renewals | Behind the live edge | CPU | Memory |
+|---|---|---|---|---|
+| Windows PC, jynxzi (transport stream), the desktop's sound card | 0, 0, 0 | 5 to 7 s throughout | 11.8% | 8 to 24 MB, 11.9 MB mean |
+| this host, lirik (fragmented MP4), PipeWire null sink | 0, 0, 0 | 7 to 34 s | 9.1% | 37 to 186 MB (proportional set size, falling as shared pages were reclaimed) |
+| hpbook, nickmercs (fragmented MP4), PipeWire null sink | 81 stalls, 0, 0 | 1 to 6 s | 8.3% | 57.7 MB mean (proportional set size) |
+
+The Windows run shows the player itself: the audio clock stayed within 0.7 s of wall time for the hour. Both Linux machines, reached over SSH with no desktop session, play into PipeWire's `auto_null` sink, which a timer drives. On this host, loaded by two Jellyfin transcodes, it ran up to 1.4% slow and later caught up, so the player fell behind and recovered without skipping. On hpbook it ran 0.5% fast, so the player used up its 6 s head start in 12 minutes and then stalled 81 times, about every 35 s, each stall refilling only the 1 s prebuffer. gs_live now refills the starting margin after a stall instead (gesso, "Refill the starting margin after a live stream runs dry"). No run needed a renewal or met an ad: each media playlist URL kept working for the whole hour, and none of the three channels ran an ad that reached this player.
+
+### M7: 30 minutes of 1080p60 in software (2026-10-08)
+
+The Windows PC played a synthetic 1080p60 live stream for 1,800 s with software decoding on the Direct3D 11 renderer: H.264 at about 7 Mbit/s from a local looping playlist served from this host through an SSH tunnel, with a discontinuity each minute where the stream's timestamps restart. The desktop was in use during the run.
+
+| Measure | Value |
+|---|---|
+| Frames shown, dropped | 107,788, 118 (0.11%): 39 in the first 11 s, then bursts of two or three, with none from minute 11 to minute 20 |
+| Dropped per minute after start-up | 2.7 |
+| Clock error, each second's mean | 6.0 ms mean, 2 to 18 ms; the largest single frame 23 ms late |
+| Jitter (time between new frames against their timestamps) | 0.7 ms mean |
+| Discontinuities, stalls, skips | 29, 0, 0 |
+| CPU, memory | 36.4% of one core, 91 MB mean, 102 MB peak |
+
+The clock error does not grow across discontinuities: it wanders with the phase between the 60 fps stream and the display's refresh, which one frame per refresh cannot hide entirely. The drops after start-up come in bursts that match no discontinuity and are consistent with other work on the desktop.
