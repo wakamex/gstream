@@ -1,0 +1,5 @@
+-std=c11
+-Isrc
+-I../gesso/src
+-I../gesso/vendor/stb
+-I../gesso/zig-pkg/sdl-0.5.4+3.4.16-SDL--sQ4qAH3kwC19Zs1kxdHplaSDnWl2MUptZD4AItI/include
