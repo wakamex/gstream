@@ -1,0 +1,44 @@
+name: macos
+
+# Builds streamit on Apple-silicon macOS and renders a frame headless. Not a release gate: streamit
+# publishes no macOS build yet.
+on:
+  push:
+    branches: [main, macos]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build on macOS and render a frame
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out the exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.16.0
+      - name: Run the tests
+        run: zig build test
+      - name: Build
+        run: zig build -Doptimize=ReleaseFast --summary all
+      - name: Start it and render a frame
+        run: |
+          set -euo pipefail
+          zig-out/bin/streamit --help | grep -q -- --sign-in
+          zig-out/bin/streamit --data "$RUNNER_TEMP/data" --demo --shot "$RUNNER_TEMP/shot.png" --at 1
+          file "$RUNNER_TEMP/shot.png" | grep -q 'PNG image data'
+      - name: Keep the frame
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos-shot
+          path: ${{ runner.temp }}/shot.png
+          if-no-files-found: ignore
+          retention-days: 7
