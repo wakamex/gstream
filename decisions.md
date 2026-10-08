@@ -75,6 +75,14 @@ Every control and feature of the Qt build (`app/Main.qml` at `qt-final`), and wh
 | Diagnostics panel (Qt, client ID, token storage, resolver, libmpv) | replaced: the diagnostics overlay (renderer, decoding path, buffer, dropped frames, clock error, memory, CPU) |
 | Dev playback mode (`STREAMIT_DEV_TWITCH_CHANNEL`) | replaced: `--play CHANNEL` |
 
+### Text: kb_text_shape, and which emoji draw in colour (M4, 2026-10-08)
+
+The shaper is kb_text_shape (zlib licence, one C header) rather than HarfBuzz, which is C++. It adds about 620 KB to the Windows executable (125 KB compressed). Two bugs in it are fixed in gesso's copy and listed in `vendor/kb/VERSION`. gesso chooses fonts per grapheme itself: kb's own fallback cannot be told to prefer an emoji font, and a font pushed between segments took effect one segment late.
+
+Colour emoji draw from COLR version 0 layers (Windows), CBDT bitmaps (Noto Color Emoji on Debian, Ubuntu, Arch) and sbix bitmaps (macOS, tested only with a generated font). COLR version 1's gradients and transforms are not drawn: on Fedora 43 and later, whose only colour emoji font is COLRv1, emoji show in monochrome from Noto Emoji. Drawing COLRv1 would need a paint-graph renderer with gradients and affine outline rasterization, several hundred lines; it waits for a user on such a system to ask.
+
+Known gaps: on Fedora, Korean shows as boxes, because its only Hangul font is a CFF2 variable font, which stb_truetype cannot read (a CFF2 charstring reader would fix it); in Windows' Segoe UI Emoji, emoji ZWJ sequences such as families draw as their separate members, because kb_text_shape matches that font's ligatures without the joiner glyph; Windows has no flag emoji, as in Windows' own apps.
+
 ## Measurements
 
 ### M0: the Qt build (2026-10-08)
