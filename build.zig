@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) void {
     const client_id = b.option([]const u8, "client-id", "Twitch application Client ID (default: TWITCH_CLIENT_ID in .env)") orelse envClientId(b);
 
     const mod = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .strip = optimize != .Debug });
-    mod.addCSourceFiles(.{ .root = b.path("src"), .files = &.{ "main.c", "twitch.c" }, .flags = flags });
+    mod.addCSourceFiles(.{ .root = b.path("src"), .files = &.{ "main.c", "views.c", "live.c", "twitch.c" }, .flags = flags });
     mod.addCMacro("STREAMIT_CLIENT_ID", b.fmt("\"{s}\"", .{client_id}));
     mod.linkLibrary(gesso);
     const exe = b.addExecutable(.{ .name = "streamit", .root_module = mod });

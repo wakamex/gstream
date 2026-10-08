@@ -1,34 +1,16 @@
-// streamit: a native Twitch client on gesso. Sign in, see who you follow is live, watch.
-// Its options are in `usage` below. F1 shows the performance overlay; closing the window quits.
+// streamit: a native Twitch client on gesso. Sign in, see which channels you follow are live, watch.
+// Its options are in `usage` below. In the list: / or Ctrl+F searches, Up/Down/Page Up/Page Down/
+// Home/End move, Enter or a click watches; F1 shows the performance overlay; F11 or Alt+Enter is
+// full screen. The window draws only when something changes.
 #define SDL_MAIN_USE_CALLBACKS
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdio.h>
 #include <string.h>
 
-#include "gs_pace.h"
-#include "gs_stats.h"
-#include "gs_text.h"
+#include "app.h"
 #include "gs_video.h"
 #include "stb_image_write.h"
-#include "twitch.h"
-
-typedef struct {
-    SDL_Window *win;
-    SDL_Renderer *ren;
-    gs_glyphs *glyphs;
-    gs_fontset *fonts;
-    gs_pace pace;
-    gs_stats stats;
-    bool show_stats;
-    char dir[1024];       // the data folder, with a trailing separator
-    const char *shot;     // --shot: render a frame to this PNG and quit
-    double shot_at;
-    const char *stats_file;
-    double quit_at;
-    uint64_t started, stats_next;
-    int frames;
-} app;
 
 static const char usage[] =
     "streamit                                  sign in and watch the channels you follow\n"
@@ -36,11 +18,36 @@ static const char usage[] =
     "  --sign-out                              forget the saved session\n"
     "  --api live                              print the followed channels that are live\n"
     "  --api resolve CHANNEL [QUALITY]         print a channel's stream (QUALITY such as best, 720p60, audio_only)\n"
+    "  --demo                                  100 made-up channels, for trying the interface offline\n"
     "  --software                              decode video in software\n"
     "  --data DIR                              where the session and settings live\n"
     "  --shot F.png [--at S]                   render one frame at S seconds, headless, and quit\n"
     "  --stats FILE [--quit S]                 add the performance overlay's text to FILE each second;\n"
     "                                          quit after S seconds\n";
+
+static Uint32 wake_event;
+static SDL_TimerID wake_timer;
+
+// Called from any thread when something the window shows has changed.
+static void wake(void) {
+    SDL_Event e = { .type = wake_event };
+    SDL_PushEvent(&e);
+}
+
+static Uint32 SDLCALL quit_later(void *user, SDL_TimerID id, Uint32 interval) {
+    (void)user, (void)id, (void)interval;
+    SDL_Event e = { .type = SDL_EVENT_QUIT };
+    SDL_PushEvent(&e);
+    return 0;
+}
+
+static Uint32 SDLCALL wake_later(void *user, SDL_TimerID id, Uint32 interval) {
+    (void)user, (void)id, (void)interval;
+    wake();
+    return 0;
+}
+
+// ---- Signing in ----
 
 // --sign-in: the device code flow in the terminal.
 static bool sign_in_here(const char *dir) {
@@ -68,6 +75,92 @@ static bool sign_in_here(const char *dir) {
     return true;
 }
 
+// The window's sign-in, on a worker: a code, then polling until the user approves or it runs out.
+static void sign_in_job(void *user) {
+    app *a = user;
+    gs_oauth_client c = twitch_oauth_client(STREAMIT_CLIENT_ID);
+    gs_oauth_device d = { 0 };
+    char msg[200];
+    gs_oauth_result r = gs_oauth_start(&c, &d, msg, sizeof msg);
+    SDL_LockMutex(a->lock);
+    if (r == GS_OAUTH_OK) a->device = d, a->auth_message[0] = 0;
+    else a->auth = SIGNED_OUT, SDL_strlcpy(a->auth_message, msg, sizeof a->auth_message);
+    a->auth_busy = false;
+    SDL_UnlockMutex(a->lock);
+    wake();
+    if (r != GS_OAUTH_OK) return;
+    uint64_t until = SDL_GetTicks() + (uint64_t)(d.expires_in * 1000);
+    gs_oauth_token t = { 0 };
+    for (;;) {
+        for (int i = 0; i < (int)(d.interval * 10); i++) {  // (checking for Cancel every 100 ms)
+            if (SDL_GetAtomicInt(&a->auth_cancel)) return;
+            SDL_Delay(100);
+        }
+        r = gs_oauth_poll(&c, &d, &t, msg, sizeof msg);
+        if (r == GS_OAUTH_OK) break;
+        if ((r != GS_OAUTH_PENDING && r != GS_OAUTH_SLOW_DOWN && r != GS_OAUTH_NETWORK) || SDL_GetTicks() > until) {
+            SDL_LockMutex(a->lock);
+            a->auth = SIGNED_OUT;
+            SDL_strlcpy(a->auth_message, SDL_GetTicks() > until ? "The code ran out; sign in again." : msg, sizeof a->auth_message);
+            SDL_UnlockMutex(a->lock);
+            wake();
+            return;
+        }
+    }
+    twitch_session s;
+    twitch_error e = twitch_session_from(STREAMIT_CLIENT_ID, &t, &s, msg, sizeof msg);
+    SDL_memset(&t, 0, sizeof t);
+    SDL_LockMutex(a->lock);
+    if (e == TW_OK && twitch_session_save(a->dir, &s)) a->session = s, a->auth = SIGNED_IN, a->auth_message[0] = 0;
+    else a->auth = SIGNED_OUT, SDL_strlcpy(a->auth_message, e == TW_OK ? "The session could not be saved." : msg, sizeof a->auth_message);
+    SDL_UnlockMutex(a->lock);
+    live_refresh_now(&a->live);
+    wake();
+}
+
+void sign_in_start(app *a) {
+    SDL_LockMutex(a->lock);
+    a->auth = SIGNING_IN, a->auth_busy = true, a->device = (gs_oauth_device){ 0 };
+    SDL_UnlockMutex(a->lock);
+    SDL_SetAtomicInt(&a->auth_cancel, 0);
+    gs_jobs_add(a->jobs, sign_in_job, a);
+}
+
+void sign_in_cancel(app *a) {
+    SDL_SetAtomicInt(&a->auth_cancel, 1);
+    SDL_LockMutex(a->lock);
+    a->auth = SIGNED_OUT, a->auth_message[0] = 0;
+    SDL_UnlockMutex(a->lock);
+}
+
+void sign_out(app *a) {
+    twitch_session_erase(a->dir);
+    SDL_LockMutex(a->lock);
+    a->auth = SIGNED_OUT, a->session = (twitch_session){ 0 };
+    SDL_UnlockMutex(a->lock);
+    SDL_LockMutex(a->live.lock);
+    a->live.count = 0, a->live.loaded = false, a->live.version++;
+    SDL_UnlockMutex(a->live.lock);
+    a->playing[0] = 0;
+}
+
+// At launch: the saved session, checked (and renewed if it expired) on a worker.
+static void restore_job(void *user) {
+    app *a = user;
+    twitch_session s;
+    SDL_LockMutex(a->lock);
+    s = a->session;
+    SDL_UnlockMutex(a->lock);
+    char msg[200];
+    twitch_error e = twitch_validate(STREAMIT_CLIENT_ID, &s, msg, sizeof msg);
+    if (e == TW_LOGIN_REQUIRED) e = twitch_refresh(STREAMIT_CLIENT_ID, &s, msg, sizeof msg), e = e == TW_OK ? twitch_validate(STREAMIT_CLIENT_ID, &s, msg, sizeof msg) : e;
+    SDL_LockMutex(a->lock);
+    if (e == TW_OK) a->session = s, twitch_session_save(a->dir, &s);
+    else if (e == TW_LOGIN_REQUIRED) a->auth = SIGNED_OUT, SDL_strlcpy(a->auth_message, "Your session ended; sign in again.", sizeof a->auth_message), twitch_session_erase(a->dir);
+    SDL_UnlockMutex(a->lock);  // (on a network failure the saved session is kept and tried again with the list)
+    wake();
+}
+
 // --api: one answer from Twitch, printed.
 static bool api(const char *dir, const char *kind, const char *arg, const char *quality) {
     char msg[256];
@@ -87,15 +180,14 @@ static bool api(const char *dir, const char *kind, const char *arg, const char *
     if (!strcmp(kind, "live")) {
         twitch_session s;
         if (!twitch_session_load(dir, &s)) return printf("not signed in (streamit --sign-in)\n"), false;
-        static twitch_stream streams[500];
+        static twitch_stream streams[LIVE_MAX];
         int n;
         char before[sizeof s.access];
         SDL_strlcpy(before, s.access, sizeof before);
-        twitch_error e = twitch_followed_live(STREAMIT_CLIENT_ID, &s, streams, 500, &n, msg, sizeof msg);
+        twitch_error e = twitch_followed_live(STREAMIT_CLIENT_ID, &s, streams, LIVE_MAX, &n, msg, sizeof msg);
         if (strcmp(before, s.access)) twitch_session_save(dir, &s);  // renewed on the way
         if (e != TW_OK) return printf("%s: %s\n", twitch_error_text(e), msg), false;
-        for (int i = 0; i < n; i++)
-            printf("%7d  %-20s %-28.28s %s\n", streams[i].viewers, streams[i].login, streams[i].category, streams[i].title);
+        for (int i = 0; i < n; i++) printf("%7d  %-20s %-28.28s %s\n", streams[i].viewers, streams[i].login, streams[i].category, streams[i].title);
         printf("%d live\n", n);
         return true;
     }
@@ -105,13 +197,12 @@ static bool api(const char *dir, const char *kind, const char *arg, const char *
 static void data_dir(const char *data, char *out, size_t size) {
     if (data) {
         size_t n = strlen(data);
-        snprintf(out, size, "%s%s", data, n && (data[n - 1] == '/' || data[n - 1] == '\\') ? "" :
 #ifdef _WIN32
-                 "\\"
+        const char *slash = "\\";
 #else
-                 "/"
+        const char *slash = "/";
 #endif
-        );
+        snprintf(out, size, "%s%s", data, n && (data[n - 1] == '/' || data[n - 1] == '\\') ? "" : slash);
         SDL_CreateDirectory(data);
         return;
     }
@@ -120,86 +211,131 @@ static void data_dir(const char *data, char *out, size_t size) {
     SDL_free(pref);
 }
 
+static void window_path(const app *a, char *out, size_t size) { snprintf(out, size, "%swindow.txt", a->dir); }
+
 SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     app *a = SDL_calloc(1, sizeof *a);
     *state = a;
     const char *data = NULL, *api_kind = NULL, *api_arg = NULL, *api_quality = NULL;
-    bool software = false, sign_in = false, sign_out = false;
+    bool do_sign_in = false, do_sign_out = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) return printf("%s", usage), SDL_APP_SUCCESS;
         else if (!strcmp(argv[i], "--data") && i + 1 < argc) data = argv[++i];
-        else if (!strcmp(argv[i], "--software")) software = true;
-        else if (!strcmp(argv[i], "--sign-in")) sign_in = true;
-        else if (!strcmp(argv[i], "--sign-out")) sign_out = true;
+        else if (!strcmp(argv[i], "--software")) a->software = true;
+        else if (!strcmp(argv[i], "--demo")) a->demo = true;
+        else if (!strcmp(argv[i], "--sign-in")) do_sign_in = true;
+        else if (!strcmp(argv[i], "--sign-out")) do_sign_out = true;
         else if (!strcmp(argv[i], "--api") && i + 1 < argc) {
             api_kind = argv[++i];
             if (i + 1 < argc && argv[i + 1][0] != '-') api_arg = argv[++i];
             if (i + 1 < argc && argv[i + 1][0] != '-') api_quality = argv[++i];
-        }
-        else if (!strcmp(argv[i], "--shot") && i + 1 < argc) a->shot = argv[++i];
+        } else if (!strcmp(argv[i], "--shot") && i + 1 < argc) a->shot = argv[++i];
         else if (!strcmp(argv[i], "--at") && i + 1 < argc) a->shot_at = SDL_atof(argv[++i]);
         else if (!strcmp(argv[i], "--stats") && i + 1 < argc) a->stats_file = argv[++i], a->show_stats = true;
         else if (!strcmp(argv[i], "--quit") && i + 1 < argc) a->quit_at = SDL_atof(argv[++i]);
         else return fprintf(stderr, "unknown option %s\n%s", argv[i], usage), SDL_APP_FAILURE;
     }
     data_dir(data, a->dir, sizeof a->dir);
-    if (sign_out) return twitch_session_erase(a->dir), printf("signed out\n"), SDL_APP_SUCCESS;
-    if (sign_in) return sign_in_here(a->dir) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
+    if (do_sign_out) return twitch_session_erase(a->dir), printf("signed out\n"), SDL_APP_SUCCESS;
+    if (do_sign_in) return sign_in_here(a->dir) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
     if (api_kind) return api(a->dir, api_kind, api_arg, api_quality) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
 
     // A shot is drawn in memory by the software renderer; otherwise the video path picks the renderer.
     const char *driver = NULL;
     if (a->shot) SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen"), SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
-    else driver = gs_video_prepare(!software);
+    else driver = gs_video_prepare(!a->software);
     if (!SDL_Init(SDL_INIT_VIDEO)) return SDL_Log("SDL_Init: %s", SDL_GetError()), SDL_APP_FAILURE;
+    wake_event = SDL_RegisterEvents(1);
+    a->persist = !a->shot && !a->demo && !a->stats_file;
+    a->window = (gs_window_state){ (int)SDL_WINDOWPOS_CENTERED, (int)SDL_WINDOWPOS_CENTERED, 1100, 700, false, false };
+    char wpath[1200];
+    window_path(a, wpath, sizeof wpath);
+    if (a->persist) gs_window_state_load(wpath, &a->window);
     SDL_PropertiesID p = SDL_CreateProperties();
     SDL_SetStringProperty(p, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "streamit");
-    SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, 1100);
-    SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, 700);
-    SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, a->window.w);
+    SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, a->window.h);
+    SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
     SDL_SetBooleanProperty(p, SDL_PROP_WINDOW_CREATE_EXTERNAL_GRAPHICS_CONTEXT_BOOLEAN, a->shot != NULL);
     a->win = SDL_CreateWindowWithProperties(p);
     SDL_DestroyProperties(p);
     if (!a->win || !(a->ren = SDL_CreateRenderer(a->win, a->shot ? NULL : driver))) return SDL_Log("window: %s", SDL_GetError()), SDL_APP_FAILURE;
+    gs_window_state_apply(&a->window, a->win);
+    SDL_ShowWindow(a->win);
     gs_pace_set(&a->pace, a->win, a->ren, true, GS_PACE_DISPLAY);
-    a->glyphs = gs_glyphs_new(a->ren, 1024);
     a->fonts = gs_fontset_system();
+    a->ui = gs_ui_new(a->win, a->ren, a->fonts);
+    a->jobs = gs_jobs_new(4);
+    a->images = gs_images_new(a->ren, a->jobs, 8u << 20);
+    a->lock = SDL_CreateMutex();
+    live_init(&a->live);
+    a->selected = 0;
+    if (a->demo) {
+        live_demo(&a->live, a->images);
+        a->auth = SIGNED_IN;
+    } else if (twitch_session_load(a->dir, &a->session)) {
+        a->auth = SIGNED_IN;
+        gs_jobs_add(a->jobs, restore_job, a);
+    }
+    // Test modes draw every frame; otherwise the window waits for events, timers and finished work.
+    if (!a->shot && !a->stats_file) SDL_SetHint(SDL_HINT_MAIN_CALLBACK_RATE, "waitevent");
+    if (a->quit_at > 0) SDL_AddTimer((Uint32)(a->quit_at * 1000), quit_later, NULL);  // (a waiting window may not draw again)
     a->started = SDL_GetTicks();
     return SDL_APP_CONTINUE;
 }
 
 SDL_AppResult SDL_AppEvent(void *state, SDL_Event *e) {
     app *a = state;
-    if (e->type == SDL_EVENT_QUIT) return SDL_APP_SUCCESS;
+    if (e->type == SDL_EVENT_QUIT || e->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) return SDL_APP_SUCCESS;
+    if (gs_window_state_track(&a->window, a->win, e)) a->window_changed = true;
+    if (e->type == SDL_EVENT_KEY_DOWN && (e->key.key == SDLK_F11 || (e->key.key == SDLK_RETURN && (e->key.mod & SDL_KMOD_ALT)))) {
+        SDL_SetWindowFullscreen(a->win, !(SDL_GetWindowFlags(a->win) & SDL_WINDOW_FULLSCREEN));
+        return SDL_APP_CONTINUE;
+    }
     if (e->type == SDL_EVENT_KEY_DOWN && e->key.key == SDLK_F1) a->show_stats = !a->show_stats;
+    gs_ui_event(a->ui, e);
     return SDL_APP_CONTINUE;
 }
 
-static SDL_FColor rgb(int r, int g, int b) { return (SDL_FColor){ r / 255.0f, g / 255.0f, b / 255.0f, 1 }; }
+// When the window should next draw on its own: for the interface's timers, images arriving, and the list's refresh.
+static void schedule(app *a) {
+    if (a->shot || a->stats_file) return;
+    int ms = gs_ui_wait_ms(a->ui);
+    if (gs_jobs_pending(a->jobs) && (ms < 0 || ms > 150)) ms = 150;  // downloads and decodes finishing
+    SDL_LockMutex(a->live.lock);
+    uint64_t next = a->live.next_refresh;
+    SDL_UnlockMutex(a->live.lock);
+    if (a->auth == SIGNED_IN && !a->live.demo) {
+        uint64_t now = SDL_GetTicks();
+        int until = next > now ? (int)(next - now) : 0;
+        if (ms < 0 || until < ms) ms = until + 1;
+    }
+    if (a->persist && a->window_changed && (ms < 0 || ms > 2000)) ms = 2000;
+    if (wake_timer) SDL_RemoveTimer(wake_timer), wake_timer = 0;
+    if (ms >= 0) wake_timer = SDL_AddTimer((Uint32)(ms ? ms : 1), wake_later, NULL);
+}
 
 SDL_AppResult SDL_AppIterate(void *state) {
     app *a = state;
     gs_stats_frame_begin(&a->stats);
-    int ow, oh;
-    SDL_GetCurrentRenderOutputSize(a->ren, &ow, &oh);
-    float u = SDL_GetWindowDisplayScale(a->win);
-    gs_glyphs_begin_frame(a->glyphs);
-    SDL_SetRenderDrawColor(a->ren, 17, 19, 18, 255);
-    SDL_RenderClear(a->ren);
-    gs_fontset_draw(a->glyphs, a->fonts, 28 * u, 32 * u, 56 * u, "streamit", rgb(53, 194, 165));
-    gs_fontset_draw(a->glyphs, a->fonts, 15 * u, 32 * u, 90 * u, "Twitch, natively", rgb(150, 156, 152));
+    if (a->auth == SIGNED_IN) live_poll(&a->live, a->jobs, STREAMIT_CLIENT_ID, &a->session, a->lock, a->dir, wake);
+    views_draw(a);
+    gs_ui_end(a->ui);
+    gs_images_end_frame(a->images);
     gs_stats_frame_end(&a->stats);
     if (a->show_stats) {
-        char pacing[200];
-        gs_pace_describe(&a->pace, pacing, sizeof pacing);
-        gs_stats_draw(&a->stats, a->ren, -12, 12, pacing);
+        char note[300];
+        gs_pace_describe(&a->pace, note, sizeof note);
+        size_t n = strlen(note);
+        SDL_snprintf(note + n, sizeof note - n, "\nimages %.1f MB cached", gs_images_bytes(a->images) / 1048576.0);
+        gs_stats_draw(&a->stats, a->ren, -12, 52, note);
         uint64_t now = SDL_GetTicks();
         if (a->stats_file && now >= a->stats_next) {
             a->stats_next = now + 1000;
             FILE *out = fopen(a->stats_file, "a");
             if (out) {
                 fprintf(out, "%.1f s: %.0f fps, frame %.2f ms (max %.2f), cpu %.1f%%, memory %.1f MB\n%s\n\n", (now - a->started) / 1000.0, a->stats.fps,
-                        a->stats.frame_ms, a->stats.frame_max_ms, a->stats.cpu_percent, a->stats.ram_bytes / 1048576.0, pacing);
+                        a->stats.frame_ms, a->stats.frame_max_ms, a->stats.cpu_percent, a->stats.ram_bytes / 1048576.0, note);
                 fclose(out);
             }
         }
@@ -207,14 +343,21 @@ SDL_AppResult SDL_AppIterate(void *state) {
     uint64_t ran = SDL_GetTicks() - a->started;
     if (a->quit_at > 0 && ran >= a->quit_at * 1000) return SDL_APP_SUCCESS;
     // (a glyph first drawn in one frame appears from the next, so a shot waits a few frames)
-    if (a->shot && ran >= a->shot_at * 1000 && ++a->frames > 3) {
+    if (a->shot && ran >= a->shot_at * 1000 && ++a->frames > 3 && !gs_jobs_pending(a->jobs)) {
         SDL_Surface *s = SDL_RenderReadPixels(a->ren, NULL), *c = s ? SDL_ConvertSurface(s, SDL_PIXELFORMAT_RGBA32) : NULL;
         bool ok = c && stbi_write_png(a->shot, c->w, c->h, 4, c->pixels, c->pitch);
         SDL_DestroySurface(c), SDL_DestroySurface(s);
         return ok ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
     }
+    if (a->persist && a->window_changed && SDL_GetTicks() >= a->next_save) {  // at most every 2 s
+        char wpath[1200];
+        window_path(a, wpath, sizeof wpath);
+        gs_window_state_save(wpath, &a->window);
+        a->window_changed = false, a->next_save = SDL_GetTicks() + 2000;
+    }
     SDL_RenderPresent(a->ren);
     gs_pace_wait(&a->pace);
+    schedule(a);
     return SDL_APP_CONTINUE;
 }
 
@@ -222,9 +365,20 @@ void SDL_AppQuit(void *state, SDL_AppResult result) {
     app *a = state;
     (void)result;
     if (!a) return;
+    if (a->persist && a->win) {
+        char wpath[1200];
+        window_path(a, wpath, sizeof wpath);
+        gs_window_state_save(wpath, &a->window);
+    }
+    if (wake_timer) SDL_RemoveTimer(wake_timer);
+    SDL_SetAtomicInt(&a->auth_cancel, 1);
+    if (a->jobs) gs_jobs_wait(a->jobs), gs_jobs_free(a->jobs);
+    gs_images_free(a->images);
+    live_free(&a->live);
+    gs_ui_free(a->ui);
     gs_fontset_free(a->fonts);
-    gs_glyphs_free(a->glyphs);
     if (a->ren) SDL_DestroyRenderer(a->ren);
     if (a->win) SDL_DestroyWindow(a->win);
+    SDL_DestroyMutex(a->lock);
     SDL_free(a);
 }

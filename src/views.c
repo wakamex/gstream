@@ -1,0 +1,195 @@
+#include "app.h"
+
+#include <stdio.h>
+#include <string.h>
+
+static SDL_FColor alpha(SDL_FColor c, float a) { return (SDL_FColor){ c.r, c.g, c.b, a }; }
+
+// "12.3K", "1.2M": viewer counts as Twitch shows them.
+static void count_text(int n, char *out, size_t size) {
+    if (n >= 1000000) SDL_snprintf(out, size, "%.1fM", n / 1e6);
+    else if (n >= 1000) SDL_snprintf(out, size, "%.1fK", n / 1e3);
+    else SDL_snprintf(out, size, "%d", n);
+}
+
+// ---- Signed out: one card in the middle of the window ----
+
+static void draw_sign_in(app *a, gs_rect win) {
+    gs_ui *ui = a->ui;
+    const gs_ui_style *st = gs_ui_style_of(ui);
+    gs_rect card = { win.x + (win.w - 420) / 2, win.y + (win.h - 300) / 2, 420, 300 };
+    gs_ui_fill(ui, card, st->panel);
+    gs_ui_frame(ui, card, st->border);
+    gs_rect c = gs_inset(card, 28);
+    gs_ui_text(ui, gs_cut_top(&c, 40), "streamit", 28, st->accent, 0);
+    gs_ui_text(ui, gs_cut_top(&c, 26), "Watch the Twitch channels you follow", st->text_px, st->muted, 0);
+    gs_cut_top(&c, 24);
+    SDL_LockMutex(a->lock);
+    auth_state auth = a->auth;
+    gs_oauth_device d = a->device;
+    char message[200];
+    SDL_strlcpy(message, a->auth_message, sizeof message);
+    bool busy = a->auth_busy;
+    SDL_UnlockMutex(a->lock);
+    if (auth == SIGNING_IN && d.user_code[0]) {
+        gs_ui_text(ui, gs_cut_top(&c, 22), "Enter this code on Twitch's page:", st->text_px, st->text, 0);
+        gs_ui_text(ui, gs_cut_top(&c, 52), d.user_code, 34, st->text, 0);
+        gs_rect buttons = gs_cut_top(&c, st->row);
+        gs_rect open = gs_cut_left(&buttons, (buttons.w - 12) / 2);
+        gs_cut_left(&buttons, 12);
+        if (gs_ui_button(ui, open, "Open page")) SDL_OpenURL(d.verification_uri);
+        if (gs_ui_button(ui, buttons, "Cancel") || gs_ui_key(ui, SDLK_ESCAPE, 0)) sign_in_cancel(a);
+    } else {
+        gs_rect button = gs_cut_top(&c, st->row + 6);
+        button = (gs_rect){ button.x + 60, button.y, button.w - 120, button.h };
+        bool ready = STREAMIT_CLIENT_ID[0] != 0 && !busy;
+        gs_ui_fill(ui, button, ready && gs_ui_hovered(ui, button) ? alpha(st->accent, 0.85f) : ready ? st->accent : st->raised);
+        gs_ui_text(ui, button, busy ? "Starting\xE2\x80\xA6" : "Sign in with Twitch", st->text_px, ready ? st->accent_text : st->muted, 0);
+        if (ready && (gs_ui_clicked(ui, button) || gs_ui_key(ui, SDLK_RETURN, 0))) sign_in_start(a);
+    }
+    gs_cut_top(&c, 14);
+    const char *note = !STREAMIT_CLIENT_ID[0] ? "This build has no Twitch Client ID (TWITCH_CLIENT_ID in .env when building)." : message;
+    gs_ui_text(ui, gs_cut_top(&c, 20), note, st->small_px, st->muted, 0);
+}
+
+// ---- The sidebar: filters and the live channels ----
+
+static const char *const sort_names[] = { "Viewers", "Channel", "Category", "Started" };
+
+static void draw_card(app *a, gs_rect r, const twitch_stream *s, bool selected) {
+    gs_ui *ui = a->ui;
+    const gs_ui_style *st = gs_ui_style_of(ui);
+    if (selected) gs_ui_fill(ui, r, st->raised);
+    else if (gs_ui_hovered(ui, r)) gs_ui_fill(ui, r, alpha(st->raised, 0.6f));
+    gs_rect in = gs_inset(r, 6);
+    char viewers[16];
+    count_text(s->viewers, viewers, sizeof viewers);
+    bool playing = !strcmp(a->playing, s->login);
+    if (a->compact) {
+        gs_rect v = gs_cut_right(&in, 56);
+        gs_ui_text(ui, v, viewers, st->small_px, st->muted, 1);
+        gs_rect name = gs_cut_left(&in, in.w * 0.45f);
+        gs_ui_text(ui, name, s->name, st->text_px, playing ? st->accent : st->text, -1);
+        gs_ui_text(ui, in, s->category, st->small_px, st->muted, -1);
+        return;
+    }
+    gs_rect thumb = gs_cut_left(&in, (in.h) * 16 / 9);
+    char url[600];
+    twitch_thumbnail_url(s->thumbnail, 320, 180, url, sizeof url);
+    float px = gs_ui_scale(ui);
+    SDL_Texture *t = gs_images_get(a->images, url, (int)(thumb.w * px + 0.5f), (int)(thumb.h * px + 0.5f));
+    if (t) gs_ui_texture(ui, thumb, t, NULL);
+    else gs_ui_fill(ui, thumb, st->raised);
+    gs_cut_left(&in, 10);
+    gs_rect top = gs_cut_top(&in, in.h / 3);
+    gs_rect v = gs_cut_right(&top, 56);
+    gs_ui_text(ui, v, viewers, st->small_px, st->warning, 1);
+    gs_ui_text(ui, top, s->name, st->text_px, playing ? st->accent : st->text, -1);
+    gs_ui_text(ui, gs_cut_top(&in, in.h / 2), s->title, st->small_px, st->text, -1);
+    gs_ui_text(ui, in, s->category, st->small_px, st->muted, -1);
+}
+
+static void draw_sidebar(app *a, gs_rect side) {
+    gs_ui *ui = a->ui;
+    const gs_ui_style *st = gs_ui_style_of(ui);
+    live *l = &a->live;
+    gs_ui_fill(ui, side, st->panel);
+    gs_rect c = gs_inset(side, 14);
+    gs_ui_text(ui, gs_cut_top(&c, 34), "streamit", 22, st->text, -1);
+    gs_cut_top(&c, 6);
+    if (gs_ui_field(ui, gs_cut_top(&c, st->row), "filter", l->filter, sizeof l->filter, "Search follows")) l->view_version = -1;
+    gs_cut_top(&c, 8);
+    gs_rect row = gs_cut_top(&c, st->row);
+    gs_rect density = gs_cut_right(&row, 54);
+    if (gs_ui_button(ui, density, a->compact ? "Cards" : "Rows")) a->compact = !a->compact;
+    gs_ui_tooltip(ui, density, a->compact ? "Switch to cards" : "Switch to compact rows");
+    gs_cut_right(&row, 6);
+    char count[32];
+    SDL_LockMutex(l->lock);
+    SDL_snprintf(count, sizeof count, "%d/%d", l->shown, l->count);
+    bool stale = l->stale, loaded = l->loaded;
+    char updated[16], error[160];
+    SDL_strlcpy(updated, l->updated_at, sizeof updated);
+    SDL_strlcpy(error, l->error, sizeof error);
+    SDL_UnlockMutex(l->lock);
+    gs_ui_text(ui, gs_cut_right(&row, 50), count, st->small_px, st->muted, 1);
+    gs_cut_right(&row, 6);
+    if (gs_ui_toggle(ui, gs_cut_right(&row, 52), "18+", &l->mature)) l->view_version = -1;
+    gs_cut_right(&row, 8);
+    if (gs_ui_dropdown(ui, row, "sort", sort_names, 4, &a->sort)) l->sort = (live_sort)a->sort, l->view_version = -1;
+    gs_cut_top(&c, 8);
+    if (stale || (!loaded && error[0])) {
+        char warn[200];
+        SDL_snprintf(warn, sizeof warn, updated[0] ? "Couldn't refresh \xE2\x80\x94 last update %s" : "Couldn't load your follows: %s", updated[0] ? updated : error);
+        gs_ui_text(ui, gs_cut_top(&c, 22), warn, st->small_px, st->warning, -1);
+    }
+    if (l->view_version != l->version) live_update_view(l);
+    if (!l->shown) {
+        const char *empty = !loaded ? "Loading your follows\xE2\x80\xA6" : l->count ? "No channels match the filters" : "No followed channels are live right now";
+        gs_ui_text(ui, gs_cut_top(&c, 24), empty, st->text_px, st->muted, -1);
+        return;
+    }
+    float row_h = a->compact ? 34 : 76;
+    gs_ui_rows rows = gs_ui_list(ui, c, "channels", l->shown, row_h, &a->selected);
+    for (int i = rows.first; i < rows.end; i++) {
+        const twitch_stream *s = &l->all[l->view[i]];
+        draw_card(a, (gs_rect){ c.x, rows.y + i * row_h, c.w, row_h - 2 }, s, i == a->selected);
+    }
+    gs_ui_list_end(ui);
+    if (rows.activated && a->selected >= 0 && a->selected < l->shown) {
+        const twitch_stream *s = &l->all[l->view[a->selected]];
+        SDL_strlcpy(a->playing, s->login, sizeof a->playing);
+        SDL_strlcpy(a->playing_name, s->name, sizeof a->playing_name);
+    }
+}
+
+// ---- The main area and the account menu ----
+
+static void draw_main(app *a, gs_rect m) {
+    gs_ui *ui = a->ui;
+    const gs_ui_style *st = gs_ui_style_of(ui);
+    gs_rect top = gs_cut_top(&m, 44);
+    gs_rect account = gs_cut_right(&top, 150);
+    account = gs_inset(account, 6);
+    char label[96];
+    SDL_LockMutex(a->lock);
+    SDL_snprintf(label, sizeof label, "%s", a->demo ? "demo" : a->session.login);
+    SDL_UnlockMutex(a->lock);
+    if (gs_ui_button(ui, account, label)) gs_ui_menu_toggle(ui, "account");
+    gs_ui_arrow(ui, (gs_rect){ account.x + account.w - 18, account.y, 12, account.h }, st->muted);
+    if (gs_ui_menu_begin(ui, "account", account, 200)) {
+        char who[96];
+        SDL_snprintf(who, sizeof who, "Signed in as %s", a->demo ? "demo" : a->session.login);
+        gs_ui_menu_item(ui, who, false);
+        if (gs_ui_menu_item(ui, "Sign out", !a->demo)) sign_out(a);
+        gs_ui_menu_end(ui);
+    }
+    gs_rect stage = gs_inset(m, 14);
+    gs_ui_fill(ui, stage, (SDL_FColor){ 0, 0, 0, 1 });
+    if (a->playing[0]) {
+        gs_ui_text(ui, gs_cut_top(&stage, stage.h / 2), a->playing_name, 24, st->text, 0);
+        gs_ui_text(ui, gs_cut_top(&stage, 24), "Starting the stream\xE2\x80\xA6", st->text_px, st->muted, 0);
+    } else {
+        gs_ui_text(ui, stage, "Pick a channel to watch", st->text_px, st->muted, 0);
+    }
+}
+
+void views_draw(app *a) {
+    gs_ui *ui = a->ui;
+    gs_rect win = gs_ui_begin(ui);
+    gs_ui_fill(ui, win, gs_ui_style_of(ui)->background);
+    SDL_LockMutex(a->lock);
+    auth_state auth = a->auth;
+    SDL_UnlockMutex(a->lock);
+    if (auth != SIGNED_IN) {
+        draw_sign_in(a, win);
+    } else {
+        gs_rect side = gs_cut_left(&win, SDL_clamp(win.w * 0.32f, 280, 400));
+        draw_sidebar(a, side);
+        draw_main(a, win);
+        // Keys for the list and the filter: / or Ctrl+F to search, Esc back to the list.
+        if (gs_ui_key(ui, SDLK_SLASH, 0) || gs_ui_key(ui, SDLK_F, SDL_KMOD_CTRL)) gs_ui_focus(ui, "filter");
+        if (gs_ui_focused(ui, "filter") && (gs_ui_key(ui, SDLK_ESCAPE, 0) || gs_ui_key(ui, SDLK_DOWN, 0) || gs_ui_key(ui, SDLK_RETURN, 0))) gs_ui_focus(ui, "channels");
+        if (!gs_ui_focused(ui, "filter") && !gs_ui_focused(ui, "channels")) gs_ui_focus(ui, "channels");
+    }
+}
