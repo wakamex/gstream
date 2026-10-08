@@ -120,7 +120,7 @@ static void draw_sidebar(app *a, gs_rect side) {
     gs_cut_top(&c, 8);
     if (stale || (!loaded && error[0])) {
         char warn[200];
-        SDL_snprintf(warn, sizeof warn, updated[0] ? "Couldn't refresh \xE2\x80\x94 last update %s" : "Couldn't load your follows: %s", updated[0] ? updated : error);
+        SDL_snprintf(warn, sizeof warn, updated[0] ? "Couldn't refresh, last update %s" : "Couldn't load your follows: %s", updated[0] ? updated : error);
         gs_ui_text(ui, gs_cut_top(&c, 22), warn, st->small_px, st->warning, -1);
     }
     if (l->view_version != l->version) live_update_view(l);
@@ -179,7 +179,10 @@ static void draw_stage(app *a, gs_rect stage) {
     if (status) {
         gs_rect mid = { stage.x, stage.y + stage.h / 2 - 40, stage.w, 80 };
         if (state != PLAYER_IDLE) gs_ui_text(ui, gs_cut_top(&mid, 40), name, 22, st->text, 0);
-        gs_ui_text(ui, mid, status, st->text_px, st->muted, 0);
+        gs_ui_text(ui, gs_cut_top(&mid, 40), status, st->text_px, st->muted, 0);
+        bool failed = state == PLAYER_FAILED || info.state == GS_LIVE_FAILED || info.state == GS_LIVE_ENDED;
+        if (failed && SDL_strcmp(p->login, "url") && gs_ui_button(ui, (gs_rect){ mid.x + (mid.w - 120) / 2, mid.y + 8, 120, st->row }, "Try again"))
+            player_retry(p, a->jobs);
     }
     if (ad && state == PLAYER_PLAYING) {
         gs_rect badge = { stage.x + 12, stage.y + 12, 44, 22 };
@@ -199,6 +202,13 @@ static void draw_player_bar(app *a, gs_rect bar) {
     if (p->state == PLAYER_IDLE) label[0] = 0;
     else SDL_snprintf(label, sizeof label, "%s%s%s", p->name, p->playing[0] ? " \xC2\xB7 " : "", p->playing);
     player_state state = p->state;
+    // The quality: "Best", then the channel's renditions once it has resolved.
+    const char *items[17] = { "Best" };
+    int count = 1, chosen = 0;
+    for (int i = 0; i < p->quality_count; i++) {
+        if (!SDL_strcmp(p->qualities[i], p->quality)) chosen = count;
+        items[count++] = p->qualities[i];
+    }
     SDL_UnlockMutex(p->lock);
     gs_rect full = gs_cut_right(&c, 70);
     if (gs_ui_button(ui, full, a->theater ? "Window" : "Full") || gs_ui_key(ui, SDLK_F, 0)) a->theater = !a->theater;
@@ -213,6 +223,12 @@ static void draw_player_bar(app *a, gs_rect bar) {
     if (gs_ui_button(ui, gs_cut_right(&c, 70), a->muted ? "Unmute" : "Mute") || gs_ui_key(ui, SDLK_M, 0)) a->muted = !a->muted, player_set_volume(p, a->volume, a->muted);
     gs_cut_right(&c, 6);
     if (state != PLAYER_IDLE && gs_ui_button(ui, gs_cut_right(&c, 64), "Stop")) player_stop(p), a->theater = false;
+    gs_cut_right(&c, 6);
+    if (count > 1 && gs_ui_dropdown(ui, gs_cut_right(&c, 118), "quality", items, count, &chosen)) {
+        char login[64], name[128];
+        SDL_strlcpy(login, p->login, sizeof login), SDL_strlcpy(name, p->name, sizeof name);
+        player_start(p, a->jobs, login, name, chosen ? items[chosen] : "best", !a->audio_only);
+    }
     gs_cut_right(&c, 10);
     gs_ui_text(ui, c, label, st->text_px, st->text, -1);
 }
@@ -238,6 +254,8 @@ static void draw_main(app *a, gs_rect m) {
         char who[96];
         SDL_snprintf(who, sizeof who, "Signed in as %s", a->demo ? "demo" : a->session.login);
         gs_ui_menu_item(ui, who, false);
+        if (gs_ui_menu_item(ui, a->show_stats ? "Hide diagnostics (F1)" : "Diagnostics (F1)", true)) a->show_stats = !a->show_stats;
+        if (gs_ui_menu_item(ui, "About streamit", true)) a->about = true;
         if (gs_ui_menu_item(ui, "Sign out", !a->demo)) sign_out(a);
         gs_ui_menu_end(ui);
     }
@@ -250,6 +268,32 @@ static void draw_theater(app *a, gs_rect win) {
     if (gs_ui_key(a->ui, SDLK_ESCAPE, 0)) a->theater = false;
 }
 
+// What streamit is built from, with each part's licence.
+static void draw_about(app *a, gs_rect win) {
+    gs_ui *ui = a->ui;
+    const gs_ui_style *st = gs_ui_style_of(ui);
+    gs_rect card = { win.x + (win.w - 480) / 2, win.y + (win.h - 360) / 2, 480, 360 };
+    gs_ui_fill(ui, card, st->panel);
+    gs_ui_frame(ui, card, st->border);
+    gs_rect c = gs_inset(card, 24);
+    char line[200];
+    gs_ui_text(ui, gs_cut_top(&c, 36), "streamit " STREAMIT_VERSION, 24, st->text, -1);
+    gs_ui_text(ui, gs_cut_top(&c, 22), "Watch the Twitch channels you follow. Not made or endorsed by Twitch.", st->small_px, st->muted, -1);
+    gs_cut_top(&c, 12);
+    int sdl = SDL_GetVersion();
+    char sdl_line[96];
+    SDL_snprintf(sdl_line, sizeof sdl_line, "SDL %d.%d.%d, zlib licence", SDL_VERSIONNUM_MAJOR(sdl), SDL_VERSIONNUM_MINOR(sdl), SDL_VERSIONNUM_MICRO(sdl));
+    SDL_snprintf(line, sizeof line, "FFmpeg %s (libavcodec), LGPL 2.1 or later", gs_video_library());
+    const char *parts[] = { "Built from:", "gesso, MIT licence", sdl_line, line, "stb_image and stb_truetype, public domain", "kb_text_shape, zlib licence" };
+    for (size_t i = 0; i < SDL_arraysize(parts); i++) gs_ui_text(ui, gs_cut_top(&c, 22), parts[i], st->small_px, i ? st->text : st->muted, -1);
+    gs_cut_top(&c, 8);
+    gs_ui_text(ui, gs_cut_top(&c, 20), "The licences are in the licenses folder beside the program.", st->small_px, st->muted, -1);
+    gs_ui_text(ui, gs_cut_top(&c, 20), "FFmpeg's source is attached to each release.", st->small_px, st->muted, -1);
+    gs_rect close = gs_cut_bottom(&c, st->row);
+    close = gs_cut_right(&close, 90);
+    if (gs_ui_button(ui, close, "Close") || gs_ui_key(ui, SDLK_ESCAPE, 0) || gs_ui_key(ui, SDLK_RETURN, 0)) a->about = false;
+}
+
 void views_draw(app *a) {
     gs_ui *ui = a->ui;
     gs_rect win = gs_ui_begin(ui);
@@ -257,7 +301,9 @@ void views_draw(app *a) {
     SDL_LockMutex(a->lock);
     auth_state auth = a->auth;
     SDL_UnlockMutex(a->lock);
-    if (auth != SIGNED_IN) {
+    if (a->about) {
+        draw_about(a, win);  // (in place of the rest, which would otherwise take its clicks)
+    } else if (auth != SIGNED_IN) {
         draw_sign_in(a, win);
     } else if (a->theater) {
         draw_theater(a, win);

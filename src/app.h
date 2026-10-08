@@ -41,6 +41,7 @@ typedef struct {
     int sort;              // a live_sort
     player player;
     bool theater;          // the player fills the window
+    bool about;            // the about card is open
     uint64_t pointer_moved;  // when the pointer last moved (the full-window player's controls show for a while after)
     float volume;
     bool muted;

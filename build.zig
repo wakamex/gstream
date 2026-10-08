@@ -4,6 +4,7 @@
 //   zig build -Doptimize=ReleaseFast -Dtarget=x86_64-windows-gnu -p zig-out/windows
 // The Twitch application's Client ID comes from -Dclient-id or TWITCH_CLIENT_ID in .env.
 const std = @import("std");
+const zon = @import("build.zig.zon");
 
 const flags: []const []const u8 = &.{ "-std=c11", "-ffp-contract=off", "-Wall", "-Wextra", "-Wno-unused-parameter", "-Wno-missing-field-initializers" };
 
@@ -15,6 +16,7 @@ pub fn build(b: *std.Build) void {
 
     const mod = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .strip = optimize != .Debug });
     mod.addCSourceFiles(.{ .root = b.path("src"), .files = &.{ "main.c", "views.c", "live.c", "player.c", "twitch.c" }, .flags = flags });
+    mod.addCMacro("STREAMIT_VERSION", "\"" ++ zon.version ++ "\"");
     mod.addCMacro("STREAMIT_CLIENT_ID", b.fmt("\"{s}\"", .{client_id}));
     mod.linkLibrary(gesso);
     const exe = b.addExecutable(.{ .name = "streamit", .root_module = mod });
