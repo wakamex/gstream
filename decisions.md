@@ -7,7 +7,7 @@ Decisions made while carrying out `PLAN.md`, with the reason for each. Measureme
 - `PLAN.md` stays uncommitted, as asked. This file records what the plan says to record "in this file".
 - Nothing is pushed. gesso, gtube and streamit commits stay local, so the GitHub CI workflows the plan calls for are written but have not run. Local runs on the reference machines stand in for them.
 - streamit depends on gesso by path (`../gesso`) while gesso's commits are local; it switches to a pinned URL when gesso is pushed. gtube is built against local gesso with `zig build --fork=../gesso` for the same reason.
-- streamit's CI workflows are written with the release work (M10), when the gesso dependency becomes a URL a runner can fetch; until then a workflow would fail on the path dependency. gesso's own workflow is in place.
+- streamit's CI workflows are written (M10) but would fail on the path dependency until gesso is pushed and pinned by URL; `RELEASES.md` lists that step. gesso's own workflow is in place.
 - gtube's working tree holds another session's uncommitted Bend work (`src/bend/`, `src/viz.c`, `README.md`). Commits in gtube stage only the files this work changes.
 - gesso's working tree holds an uncommitted README edit (the Principles section) from another session. gesso commits stage only the files this work changes, and README additions for new modules are made around that edit.
 
@@ -82,6 +82,23 @@ The shaper is kb_text_shape (zlib licence, one C header) rather than HarfBuzz, w
 Colour emoji draw from COLR version 0 layers (Windows), CBDT bitmaps (Noto Color Emoji on Debian, Ubuntu, Arch) and sbix bitmaps (macOS, tested only with a generated font). COLR version 1's gradients and transforms are not drawn: on Fedora 43 and later, whose only colour emoji font is COLRv1, emoji show in monochrome from Noto Emoji. Drawing COLRv1 would need a paint-graph renderer with gradients and affine outline rasterization, several hundred lines; it waits for a user on such a system to ask.
 
 Known gaps: on Fedora, Korean shows as boxes, because its only Hangul font is a CFF2 variable font, which stb_truetype cannot read (a CFF2 charstring reader would fix it); in Windows' Segoe UI Emoji, emoji ZWJ sequences such as families draw as their separate members, because kb_text_shape matches that font's ligatures without the joiner glyph; Windows has no flag emoji, as in Windows' own apps.
+
+### Parity details (M9, 2026-10-08)
+
+- Quality: the player bar's dropdown lists Best and the channel's renditions, best first, from the master playlist of the last resolve; choosing one restarts the channel at it. The choice holds for later channels in the session and is not saved between runs: the Qt build had no quality setting to match.
+- Errors: each `twitch_error` class has its own sentence, with Twitch's words added for the unsupported, network and unknown classes; a failed or ended stream offers Try again.
+- The diagnostics panel became the F1 overlay, also in the account menu. The About card names the version (from `build.zig.zon`), FFmpeg's release (`gs_video_library`), SDL's version and every library's licence. It replaces the whole view while open, since `gs_ui` has no modal layer to keep clicks from the widgets beneath.
+- Full and F show the player alone and full screen, as the Qt build's Full did; Esc and Stop leave both. `--play` still opens the player-only view in a window.
+
+### Video with unstated colours (2026-10-08)
+
+Twitch's H.264 streams leave the colour matrix, primaries and range unstated. SDL's software renderer refuses such a texture (`Unsupported YUV colorspace`), so with it no picture showed. `gs_video` assumes what players do: BT.709 at 720 lines and up, BT.601 below, limited range.
+
+### Releases: Linux and Windows, macOS built in CI (M10, 2026-10-08)
+
+v0.1.0 ships Linux (glibc 2.27) and Windows archives, as gtube does. macOS waits: no Mac is reachable to run a build, and signing and notarisation need an Apple developer account the project does not have. `.github/workflows/macos.yml` builds and tests on macOS once pushed, and gesso's workflow runs its video tests there; an unsigned `.app` can follow once a macOS run has played a stream.
+
+Each release attaches a third asset with FFmpeg's unmodified release tarball (checked against its SHA-256) and gesso's FFmpeg build files, following FFmpeg's licence checklist for a static link. glibc 2.27 needs a stand-in for `posix_spawn_file_actions_addchdir_np`, which SDL links; it moved from gtube into gesso so every app gets it. gtube keeps its own copy until its gesso pin includes gesso's, which is harmless because the linker takes gesso's only when nothing else defines the function. The glibc 2.27 build starts and renders in an Ubuntu 18.04 container.
 
 ## Measurements
 
