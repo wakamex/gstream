@@ -191,3 +191,7 @@ Each run played lirik at 1080p60 (fragmented MP4, about 7 Mbit/s) with `--stats`
 On Windows the hardware path meets M7's figures on a live channel and uses an eighth of the Qt build's CPU and a tenth of its memory. The Qt build cannot be switched to `hwdec=auto-safe`, so the comparison is with what it shipped.
 
 The Linux run confirms the app takes the VAAPI path and decodes with little CPU; its drops are not a smoothness figure, because the offscreen driver has no vsync and paces with a timer, and the host was running two Jellyfin transcodes at the time. Its memory is NVIDIA's CUDA context, as M1 found. hpbook has no H.264 VAAPI driver (Fedora's Mesa lacks the codec), and no Mac is reachable, so those paths remain unrun.
+
+### Signed in with a real account (2026-10-08)
+
+`streamit --sign-in` completed the device code flow for a real Twitch account and saved the session. With it, `--api live` listed the account's 8 live followed channels, and the window showed the same 8 with thumbnails, viewer counts, titles and categories. One title's U+2A4A (a mathematical operator) draws as a box on this host because no installed font covers it.
