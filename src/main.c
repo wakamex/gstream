@@ -356,7 +356,7 @@ SDL_AppResult SDL_AppIterate(void *state) {
     gs_images_end_frame(a->images);
     gs_stats_frame_end(&a->stats);
     if (a->show_stats) {
-        char note[300];
+        char note[640];
         gs_pace_describe(&a->pace, note, sizeof note);
         size_t n = strlen(note);
         SDL_snprintf(note + n, sizeof note - n, "\nimages %.1f MB cached", gs_images_bytes(a->images) / 1048576.0);
