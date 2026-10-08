@@ -177,3 +177,17 @@ The Windows PC played a synthetic 1080p60 live stream for 1,800 s with software 
 | CPU, memory | 36.4% of one core, 91 MB mean, 102 MB peak |
 
 The clock error does not grow across discontinuities: it wanders with the phase between the 60 fps stream and the display's refresh, which one frame per refresh cannot hide entirely. The drops after start-up come in bursts that match no discontinuity and are consistent with other work on the desktop.
+
+### M8: hardware decoding on real channels (2026-10-08)
+
+Each run played lirik at 1080p60 (fragmented MP4, about 7 Mbit/s) with `--stats`.
+
+| Machine and path | Length | Frames shown, dropped | Clock error, jitter (means) | CPU | Memory |
+|---|---|---|---|---|---|
+| Windows PC, Direct3D 11 (`d3d11va`), the desktop in use | 1,200 s | 71,913, 17 (0.85 a minute) | 7.6 ms, 0.76 ms | 12.2% | 42 MB mean, 58 MB peak |
+| this host, VAAPI on NVIDIA through EGL, offscreen | 600 s | 35,235, 919 | | 14.6% | 254 MB mean |
+| Windows PC, the Qt build (libmpv, software), from M0 | | | | 106% | 434 MB |
+
+On Windows the hardware path meets M7's figures on a live channel and uses an eighth of the Qt build's CPU and a tenth of its memory. The Qt build cannot be switched to `hwdec=auto-safe`, so the comparison is with what it shipped.
+
+The Linux run confirms the app takes the VAAPI path and decodes with little CPU; its drops are not a smoothness figure, because the offscreen driver has no vsync and paces with a timer, and the host was running two Jellyfin transcodes at the time. Its memory is NVIDIA's CUDA context, as M1 found. hpbook has no H.264 VAAPI driver (Fedora's Mesa lacks the codec), and no Mac is reachable, so those paths remain unrun.
