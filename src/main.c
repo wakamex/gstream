@@ -21,6 +21,7 @@ static const char usage[] =
     "  --api resolve CHANNEL [QUALITY]         print a channel's stream (QUALITY such as best, 720p60, audio_only)\n"
     "  --play CHANNEL                          start watching a channel\n"
     "  --quality Q, --audio-only               the rendition to play (best, 720p60, audio_only...)\n"
+    "  --url URL                               play an HLS media playlist directly, for testing\n"
     "  --demo                                  100 made-up channels, for trying the interface offline\n"
     "  --software                              decode video in software\n"
     "  --data DIR                              where the session and settings live\n"
@@ -224,7 +225,7 @@ static void window_path(const app *a, char *out, size_t size) { snprintf(out, si
 SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     app *a = SDL_calloc(1, sizeof *a);
     *state = a;
-    const char *data = NULL, *api_kind = NULL, *api_arg = NULL, *api_quality = NULL, *play = NULL;
+    const char *data = NULL, *api_kind = NULL, *api_arg = NULL, *api_quality = NULL, *play = NULL, *url = NULL;
     bool do_sign_in = false, do_sign_out = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) return printf("%s", usage), SDL_APP_SUCCESS;
@@ -234,6 +235,7 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
         else if (!strcmp(argv[i], "--play") && i + 1 < argc) play = argv[++i];
         else if (!strcmp(argv[i], "--quality") && i + 1 < argc) a->quality = argv[++i];
         else if (!strcmp(argv[i], "--audio-only")) a->audio_only = true;
+        else if (!strcmp(argv[i], "--url") && i + 1 < argc) url = argv[++i];
         else if (!strcmp(argv[i], "--sign-in")) do_sign_in = true;
         else if (!strcmp(argv[i], "--sign-out")) do_sign_out = true;
         else if (!strcmp(argv[i], "--api") && i + 1 < argc) {
@@ -291,9 +293,10 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
         a->auth = SIGNED_IN;
         gs_jobs_add(a->jobs, restore_job, a);
     }
-    if (play) {  // straight to a channel, signed in or not: playback needs no account
+    if (play || url) {  // straight to a channel or a playlist, signed in or not: playback needs no account
         a->auth = a->auth == SIGNED_OUT && !a->demo ? SIGNED_IN : a->auth;
-        watch(a, play, play);
+        if (url) player_play_url(&a->player, url, !a->audio_only);
+        else watch(a, play, play);
         a->theater = true;
     }
     // Test modes draw every frame; otherwise the window waits for events, timers and finished work.
@@ -358,6 +361,11 @@ SDL_AppResult SDL_AppIterate(void *state) {
         size_t n = strlen(note);
         SDL_snprintf(note + n, sizeof note - n, "\nimages %.1f MB cached", gs_images_bytes(a->images) / 1048576.0);
         SDL_LockMutex(a->player.lock);
+        if (!a->player.live && a->player.state != PLAYER_IDLE) {
+            static const char *const pstates[] = { "idle", "resolving", "playing", "failed" };
+            n = strlen(note);
+            SDL_snprintf(note + n, sizeof note - n, "\nplayer %s %s %s", a->player.login, pstates[a->player.state], a->player.message);
+        }
         if (a->player.live) {
             static const char *const states[] = { "starting", "playing", "buffering", "ended", "failed" };
             gs_live_info i = gs_live_get_info(a->player.live);
@@ -367,8 +375,9 @@ SDL_AppResult SDL_AppIterate(void *state) {
                          i.segments, i.discontinuities, i.skips, i.stalls, i.renewals);
             if (a->player.video) {
                 n = strlen(note);
-                SDL_snprintf(note + n, sizeof note - n, "\nvideo %s %dx%d, shown %lld, dropped %lld, queued %d", i.video.path ? i.video.path : "-",
-                             i.video.width, i.video.height, i.video.shown, i.video.dropped, i.video.queued);
+                SDL_snprintf(note + n, sizeof note - n, "\nvideo %s %dx%d, shown %lld, dropped %lld, queued %d\nclock error %.1f ms (largest %.1f), jitter %.1f ms",
+                             i.video.path ? i.video.path : "-", i.video.width, i.video.height, i.video.shown, i.video.dropped, i.video.queued,
+                             i.video.error_ms, i.video.error_max_ms, i.video.jitter_ms);
             }
         }
         SDL_UnlockMutex(a->player.lock);
