@@ -1,0 +1,10 @@
+.{
+    .name = .streamit,
+    .version = "0.0.0",
+    .fingerprint = 0x6820440b38426552,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .gesso = .{ .path = "../gesso" },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "assets", "LICENSE", "README.md" },
+}

@@ -7,6 +7,7 @@ Decisions made while carrying out `PLAN.md`, with the reason for each. Measureme
 - `PLAN.md` stays uncommitted, as asked. This file records what the plan says to record "in this file".
 - Nothing is pushed. gesso, gtube and streamit commits stay local, so the GitHub CI workflows the plan calls for are written but have not run. Local runs on the reference machines stand in for them.
 - streamit depends on gesso by path (`../gesso`) while gesso's commits are local; it switches to a pinned URL when gesso is pushed. gtube is built against local gesso with `zig build --fork=../gesso` for the same reason.
+- streamit's CI workflows are written with the release work (M10), when the gesso dependency becomes a URL a runner can fetch; until then a workflow would fail on the path dependency. gesso's own workflow is in place.
 - gtube's working tree holds another session's uncommitted Bend work (`src/bend/`, `src/viz.c`, `README.md`). Commits in gtube stage only the files this work changes.
 - gesso's working tree holds an uncommitted README edit (the Principles section) from another session. gesso commits stage only the files this work changes, and README additions for new modules are made around that edit.
 
@@ -100,3 +101,14 @@ Measured on the Windows PC in its desktop session with `STREAMIT_DEV_TWITCH_CHAN
 | hpbook, Ryzen 7 4700U, offscreen | software, `opengl` | 89.1% | 96 MB | 840, 72 (15 s) |
 
 The Linux figures carry NVIDIA's driver: its CUDA context for VAAPI adds about 85 MB of private memory, which the 100 MB playing budget cannot absorb on that hardware. The bench executable, with libavcodec, SDL and gesso, is 5.6 MB for Windows in ReleaseFast. Dropped frames come from a 60 fps stream on a 60 Hz present loop: when two frames fall due in one refresh, one is skipped; M7's smoothness work addresses that.
+
+### M2: the empty app (2026-10-08)
+
+The skeleton (`src/main.c`: window, text, the stats overlay, `--shot`, `--stats`) links gesso with `-Dvideo`, so FFmpeg is in it from the start.
+
+| Measure | Linux x86-64 | Windows x86-64 |
+|---|---|---|
+| Executable, ReleaseFast, stripped | 5.64 MB | 5.61 MB (1.72 MB with xz -9) |
+| Memory, idle, after 6 s | 162 MB on this host (NVIDIA's GL driver in the process) | 14.8 MB private working set |
+
+Idle CPU is 9.7% of a core on Windows because every frame is redrawn at the display rate; an idle interface that redraws only when something changes is part of the browsing milestone.
