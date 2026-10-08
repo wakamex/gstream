@@ -24,6 +24,7 @@ static const char usage[] =
     "  --url URL                               play an HLS media playlist directly, for testing\n"
     "  --demo                                  100 made-up channels, for trying the interface offline\n"
     "  --software                              decode video in software\n"
+    "  --mute                                  start muted\n"
     "  --data DIR                              where the session and settings live\n"
     "  --shot F.png [--at S]                   render one frame at S seconds, headless, and quit\n"
     "  --stats FILE [--quit S]                 add the performance overlay's text to FILE each second;\n"
@@ -231,6 +232,7 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) return printf("%s", usage), SDL_APP_SUCCESS;
         else if (!strcmp(argv[i], "--data") && i + 1 < argc) data = argv[++i];
         else if (!strcmp(argv[i], "--software")) a->software = true;
+        else if (!strcmp(argv[i], "--mute")) a->muted = true;
         else if (!strcmp(argv[i], "--demo")) a->demo = true;
         else if (!strcmp(argv[i], "--play") && i + 1 < argc) play = argv[++i];
         else if (!strcmp(argv[i], "--quality") && i + 1 < argc) a->quality = argv[++i];
@@ -282,6 +284,7 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     if (!a->shot && !gs_mix_open(48000)) SDL_Log("audio: %s", SDL_GetError());  // (plays on without sound)
     a->volume = 0.8f;
     player_init(&a->player, a->ren, wake);
+    player_set_volume(&a->player, a->volume, a->muted);
     a->images = gs_images_new(a->ren, a->jobs, 8u << 20);
     a->lock = SDL_CreateMutex();
     live_init(&a->live);
