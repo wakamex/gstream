@@ -48,6 +48,24 @@ static void changed(void *user) {
 
 typedef struct { player *p; int generation; char login[64], quality[64]; bool video; } resolve_job;
 
+// What the viewer is told when a channel cannot play, by the kind of failure; Twitch's own words
+// follow where the kind alone does not explain it.
+static void failure_text(twitch_error e, const char *said, char *out, size_t size) {
+    switch (e) {
+    case TW_OFFLINE: SDL_strlcpy(out, "This channel is offline.", size); break;
+    case TW_LOGIN_REQUIRED: SDL_strlcpy(out, "Twitch wants you to sign in again to watch this.", size); break;
+    case TW_SUBSCRIBER_ONLY: SDL_strlcpy(out, "This stream is for the channel's subscribers only.", size); break;
+    case TW_GEO_BLOCKED: SDL_strlcpy(out, "This stream is not available in your region.", size); break;
+    case TW_AGE_RESTRICTED: SDL_strlcpy(out, "This stream is age-restricted and plays only on Twitch's site.", size); break;
+    case TW_RATE_LIMITED: SDL_strlcpy(out, "Twitch is limiting requests. Try again in a minute.", size); break;
+    case TW_UNSUPPORTED: SDL_snprintf(out, size, "Twitch would not play this stream here (%s).", said); break;
+    case TW_NETWORK: SDL_snprintf(out, size, "Twitch did not answer (%s). Check the connection and try again.", said); break;
+    default: SDL_snprintf(out, size, "This stream could not play: %s.", said); break;
+    }
+}
+
+static long long rank(const gs_hls_variant *v) { return v->audio_only ? -1 : (long long)v->height * 1000000000LL + SDL_lround(v->fps) * 1000000LL + v->bandwidth; }
+
 static void resolve(void *user) {
     resolve_job *j = user;
     player *p = j->p;
@@ -78,7 +96,17 @@ static void resolve(void *user) {
     p->live = live, p->live_user = u, p->error = e;
     p->state = e == TW_OK ? PLAYER_PLAYING : PLAYER_FAILED;
     SDL_strlcpy(p->playing, e == TW_OK ? pb.quality : "", sizeof p->playing);
-    SDL_strlcpy(p->message, e == TW_OK ? "" : msg, sizeof p->message);
+    if (e == TW_OK) p->message[0] = 0;
+    else failure_text(e, msg, p->message, sizeof p->message);
+    // The renditions, best first (Twitch lists them in a different order each time).
+    int order[16], n = 0;
+    for (int i = 0; e == TW_OK && i < pb.count && n < 16; i++) {
+        int k = n++;
+        for (; k > 0 && rank(&pb.variants[order[k - 1]]) < rank(&pb.variants[i]); k--) order[k] = order[k - 1];
+        order[k] = i;
+    }
+    p->quality_count = n;
+    for (int i = 0; i < n; i++) twitch_variant_name(&pb.variants[order[i]], p->qualities[i], sizeof p->qualities[i]);
     SDL_UnlockMutex(p->lock);
     if (p->wake) p->wake();
     free(j);
@@ -91,6 +119,7 @@ void player_start(player *p, gs_jobs *jobs, const char *login, const char *name,
     SDL_LockMutex(p->lock);
     p->generation++;
     p->state = PLAYER_RESOLVING, p->ad = false, p->video = video, p->message[0] = p->playing[0] = 0;
+    if (SDL_strcmp(p->login, login)) p->quality_count = 0;
     SDL_strlcpy(p->login, login, sizeof p->login), SDL_strlcpy(p->name, name, sizeof p->name);
     if (quality) SDL_strlcpy(p->quality, quality, sizeof p->quality);
     *j = (resolve_job){ p, p->generation, "", "", video };
@@ -109,7 +138,33 @@ void player_stop(player *p) {
     free(user);
 }
 
+void player_retry(player *p, gs_jobs *jobs) {
+    char login[64], name[128];
+    SDL_LockMutex(p->lock);
+    SDL_strlcpy(login, p->login, sizeof login), SDL_strlcpy(name, p->name, sizeof name);
+    bool video = p->video;
+    SDL_UnlockMutex(p->lock);
+    player_start(p, jobs, login, name, NULL, video);
+}
+
 void player_set_volume(player *p, float volume, bool muted) {
     p->volume = volume, p->muted = muted;
     gs_mix_set_volume(muted ? 0 : volume);
+}
+
+void player_play_url(player *p, const char *url, bool video) {
+    player_stop(p);
+    live_user *u = malloc(sizeof *u);
+    if (!u) return;
+    SDL_LockMutex(p->lock);
+    p->generation++;
+    *u = (live_user){ p, p->generation, "", "" };
+    gs_live_config c = { .url = url, .video = video, .renderer = p->renderer, .segment = segment, .changed = changed, .user = u };
+    p->live = gs_live_start(&c);
+    p->live_user = p->live ? u : NULL;
+    p->video = video, p->state = p->live ? PLAYER_PLAYING : PLAYER_FAILED, p->quality_count = 0;
+    SDL_strlcpy(p->name, url, sizeof p->name), SDL_strlcpy(p->login, "url", sizeof p->login), SDL_strlcpy(p->playing, "", sizeof p->playing);
+    SDL_strlcpy(p->message, p->live ? "" : "the player could not start", sizeof p->message);
+    SDL_UnlockMutex(p->lock);
+    if (!p->live) free(u);
 }

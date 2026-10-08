@@ -16,8 +16,10 @@ typedef struct {
     char login[64], name[128];
     char quality[64];       // asked for: "best", "audio_only", "720p60"...
     char playing[64];       // the rendition playing, such as "1080p60"
-    char message[200];
+    char message[200];      // why it failed, for the viewer
     twitch_error error;
+    char qualities[16][32]; // the channel's renditions, best first, audio_only last
+    int quality_count;
     bool video, ad;         // video wanted; an ad is playing (from the playlist's markers)
     int generation;         // bumped by each start and stop, so a late resolve is dropped
     gs_live *live;
@@ -32,4 +34,6 @@ void player_init(player *p, SDL_Renderer *r, void (*wake)(void));
 void player_free(player *p);
 void player_start(player *p, gs_jobs *jobs, const char *login, const char *name, const char *quality, bool video);
 void player_stop(player *p);
+void player_play_url(player *p, const char *url, bool video);  // an HLS media playlist, without Twitch
 void player_set_volume(player *p, float volume, bool muted);
+void player_retry(player *p, gs_jobs *jobs);  // starts the same channel again
