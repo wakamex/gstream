@@ -12,7 +12,8 @@ Measured on Windows 11 (Ryzen 7 3800XT, RTX 3080) against the Qt and libmpv buil
 |---|---|---|
 | Download | 195 MB folder | 2.5 MB zip, one 6.3 MB executable |
 | Browsing the list, idle | not measured | 22 MB, 0.4% CPU |
-| Playing 1080p60, software decoding | 434 MB, 106% CPU | 101 MB, 35% CPU |
+| Playing a 1080p60 channel | 434 MB, 106% CPU (software decoding) | 42 MB, 12% CPU (Direct3D 11 decoding) |
+| Playing 1080p60, software decoding | 434 MB, 106% CPU | 91 MB, 36% CPU |
 
 ## Using it
 
