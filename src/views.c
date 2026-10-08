@@ -209,11 +209,12 @@ static void draw_player_bar(app *a, gs_rect bar) {
     else SDL_snprintf(label, sizeof label, "%s%s%s", p->name, p->playing[0] ? " \xC2\xB7 " : "", p->playing);
     player_state state = p->state;
     // The quality: "Best", then the channel's renditions once it has resolved.
+    char names[16][32];
     const char *items[17] = { "Best" };
     int count = 1, chosen = 0;
     for (int i = 0; i < p->quality_count; i++) {
         if (!SDL_strcmp(p->qualities[i], p->quality)) chosen = count;
-        items[count++] = p->qualities[i];
+        items[count++] = SDL_memcpy(names[i], p->qualities[i], sizeof names[i]);
     }
     SDL_UnlockMutex(p->lock);
     gs_rect full = gs_cut_right(&c, 70);
