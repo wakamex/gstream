@@ -18,3 +18,6 @@ zig-pkg/
 *~
 .DS_Store
 Thumbs.db
+
+# An older local repository of this project, kept for its history
+.git-local/
