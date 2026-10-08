@@ -64,7 +64,7 @@ static void draw_card(app *a, gs_rect r, const twitch_stream *s, bool selected) 
     gs_rect in = gs_inset(r, 6);
     char viewers[16];
     count_text(s->viewers, viewers, sizeof viewers);
-    bool playing = !strcmp(a->playing, s->login);
+    bool playing = a->player.state != PLAYER_IDLE && !strcmp(a->player.login, s->login);
     if (a->compact) {
         gs_rect v = gs_cut_right(&in, 56);
         gs_ui_text(ui, v, viewers, st->small_px, st->muted, 1);
@@ -138,9 +138,83 @@ static void draw_sidebar(app *a, gs_rect side) {
     gs_ui_list_end(ui);
     if (rows.activated && a->selected >= 0 && a->selected < l->shown) {
         const twitch_stream *s = &l->all[l->view[a->selected]];
-        SDL_strlcpy(a->playing, s->login, sizeof a->playing);
-        SDL_strlcpy(a->playing_name, s->name, sizeof a->playing_name);
+        if (a->live.demo) SDL_strlcpy(a->player.login, s->login, sizeof a->player.login);  // (made-up channels cannot play)
+        else watch(a, s->login, s->name);
     }
+}
+
+// ---- The player ----
+
+static void percent(float v, char *out, size_t size) { SDL_snprintf(out, size, "%d%%", (int)(v * 100 + 0.5f)); }
+
+// The picture, fitted to the stage with its own aspect, or what the player is doing instead.
+static void draw_stage(app *a, gs_rect stage) {
+    gs_ui *ui = a->ui;
+    const gs_ui_style *st = gs_ui_style_of(ui);
+    gs_ui_fill(ui, stage, (SDL_FColor){ 0, 0, 0, 1 });
+    player *p = &a->player;
+    SDL_LockMutex(p->lock);
+    player_state state = p->state;
+    gs_live *live = p->live;
+    char name[128], message[200];
+    SDL_strlcpy(name, p->name, sizeof name), SDL_strlcpy(message, p->message, sizeof message);
+    bool ad = p->ad, video = p->video;
+    SDL_UnlockMutex(p->lock);
+    SDL_FRect src;
+    SDL_Texture *t = live ? gs_live_frame(live, &src) : NULL;
+    if (t && src.w > 0 && src.h > 0) {
+        float k = SDL_min(stage.w / src.w, stage.h / src.h);
+        gs_rect fit = { stage.x + (stage.w - src.w * k) / 2, stage.y + (stage.h - src.h * k) / 2, src.w * k, src.h * k };
+        gs_ui_texture(ui, fit, t, &src);
+    }
+    gs_live_info info = live ? gs_live_get_info(live) : (gs_live_info){ 0 };
+    const char *status = NULL;
+    if (state == PLAYER_IDLE) status = "Pick a channel to watch";
+    else if (state == PLAYER_RESOLVING) status = "Finding the stream\xE2\x80\xA6";
+    else if (state == PLAYER_FAILED) status = message;
+    else if (info.state == GS_LIVE_FAILED || info.state == GS_LIVE_ENDED) status = info.message[0] ? info.message : "The stream has ended";
+    else if (info.state == GS_LIVE_STARTING) status = "Starting\xE2\x80\xA6";
+    else if (info.state == GS_LIVE_BUFFERING) status = "Buffering\xE2\x80\xA6";
+    else if (!t && video) status = "Waiting for the picture\xE2\x80\xA6";
+    if (status) {
+        gs_rect mid = { stage.x, stage.y + stage.h / 2 - 40, stage.w, 80 };
+        if (state != PLAYER_IDLE) gs_ui_text(ui, gs_cut_top(&mid, 40), name, 22, st->text, 0);
+        gs_ui_text(ui, mid, status, st->text_px, st->muted, 0);
+    }
+    if (ad && state == PLAYER_PLAYING) {
+        gs_rect badge = { stage.x + 12, stage.y + 12, 44, 22 };
+        gs_ui_fill(ui, badge, st->warning);
+        gs_ui_text(ui, badge, "Ad", st->small_px, st->accent_text, 0);
+    }
+}
+
+static void draw_player_bar(app *a, gs_rect bar) {
+    gs_ui *ui = a->ui;
+    const gs_ui_style *st = gs_ui_style_of(ui);
+    player *p = &a->player;
+    gs_ui_fill(ui, bar, st->panel);
+    gs_rect c = gs_inset(bar, 6);
+    SDL_LockMutex(p->lock);
+    char label[200];
+    if (p->state == PLAYER_IDLE) label[0] = 0;
+    else SDL_snprintf(label, sizeof label, "%s%s%s", p->name, p->playing[0] ? " \xC2\xB7 " : "", p->playing);
+    player_state state = p->state;
+    SDL_UnlockMutex(p->lock);
+    gs_rect full = gs_cut_right(&c, 70);
+    if (gs_ui_button(ui, full, a->theater ? "Window" : "Full") || gs_ui_key(ui, SDLK_F, 0)) a->theater = !a->theater;
+    gs_cut_right(&c, 8);
+    char pct[16];
+    percent(a->volume, pct, sizeof pct);
+    gs_ui_text(ui, gs_cut_right(&c, 44), pct, st->small_px, st->muted, 1);
+    gs_cut_right(&c, 6);
+    float v = a->volume;
+    if (gs_ui_slider(ui, gs_cut_right(&c, 110), "volume", &v, 0, 1)) a->volume = v, player_set_volume(p, a->volume, a->muted);
+    gs_cut_right(&c, 8);
+    if (gs_ui_button(ui, gs_cut_right(&c, 70), a->muted ? "Unmute" : "Mute") || gs_ui_key(ui, SDLK_M, 0)) a->muted = !a->muted, player_set_volume(p, a->volume, a->muted);
+    gs_cut_right(&c, 6);
+    if (state != PLAYER_IDLE && gs_ui_button(ui, gs_cut_right(&c, 64), "Stop")) player_stop(p), a->theater = false;
+    gs_cut_right(&c, 10);
+    gs_ui_text(ui, c, label, st->text_px, st->text, -1);
 }
 
 // ---- The main area and the account menu ----
@@ -157,6 +231,9 @@ static void draw_main(app *a, gs_rect m) {
     SDL_UnlockMutex(a->lock);
     if (gs_ui_button(ui, account, label)) gs_ui_menu_toggle(ui, "account");
     gs_ui_arrow(ui, (gs_rect){ account.x + account.w - 18, account.y, 12, account.h }, st->muted);
+    gs_rect bar = gs_cut_bottom(&m, 44);
+    draw_stage(a, gs_inset(m, 14));
+    draw_player_bar(a, bar);
     if (gs_ui_menu_begin(ui, "account", account, 200)) {
         char who[96];
         SDL_snprintf(who, sizeof who, "Signed in as %s", a->demo ? "demo" : a->session.login);
@@ -164,14 +241,13 @@ static void draw_main(app *a, gs_rect m) {
         if (gs_ui_menu_item(ui, "Sign out", !a->demo)) sign_out(a);
         gs_ui_menu_end(ui);
     }
-    gs_rect stage = gs_inset(m, 14);
-    gs_ui_fill(ui, stage, (SDL_FColor){ 0, 0, 0, 1 });
-    if (a->playing[0]) {
-        gs_ui_text(ui, gs_cut_top(&stage, stage.h / 2), a->playing_name, 24, st->text, 0);
-        gs_ui_text(ui, gs_cut_top(&stage, 24), "Starting the stream\xE2\x80\xA6", st->text_px, st->muted, 0);
-    } else {
-        gs_ui_text(ui, stage, "Pick a channel to watch", st->text_px, st->muted, 0);
-    }
+}
+
+// The player filling the window; its controls show while the pointer has moved in the last 3 seconds.
+static void draw_theater(app *a, gs_rect win) {
+    draw_stage(a, win);
+    if (SDL_GetTicks() - a->pointer_moved < 3000) draw_player_bar(a, gs_cut_bottom(&win, 44));
+    if (gs_ui_key(a->ui, SDLK_ESCAPE, 0)) a->theater = false;
 }
 
 void views_draw(app *a) {
@@ -183,6 +259,8 @@ void views_draw(app *a) {
     SDL_UnlockMutex(a->lock);
     if (auth != SIGNED_IN) {
         draw_sign_in(a, win);
+    } else if (a->theater) {
+        draw_theater(a, win);
     } else {
         gs_rect side = gs_cut_left(&win, SDL_clamp(win.w * 0.32f, 280, 400));
         draw_sidebar(a, side);

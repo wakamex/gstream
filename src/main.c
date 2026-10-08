@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "gs_mix.h"
 #include "gs_video.h"
 #include "stb_image_write.h"
 
@@ -18,6 +19,8 @@ static const char usage[] =
     "  --sign-out                              forget the saved session\n"
     "  --api live                              print the followed channels that are live\n"
     "  --api resolve CHANNEL [QUALITY]         print a channel's stream (QUALITY such as best, 720p60, audio_only)\n"
+    "  --play CHANNEL                          start watching a channel\n"
+    "  --quality Q, --audio-only               the rendition to play (best, 720p60, audio_only...)\n"
     "  --demo                                  100 made-up channels, for trying the interface offline\n"
     "  --software                              decode video in software\n"
     "  --data DIR                              where the session and settings live\n"
@@ -133,6 +136,10 @@ void sign_in_cancel(app *a) {
     SDL_UnlockMutex(a->lock);
 }
 
+void watch(app *a, const char *login, const char *name) {
+    player_start(&a->player, a->jobs, login, name, a->audio_only ? "audio_only" : a->quality, !a->audio_only);
+}
+
 void sign_out(app *a) {
     twitch_session_erase(a->dir);
     SDL_LockMutex(a->lock);
@@ -141,7 +148,8 @@ void sign_out(app *a) {
     SDL_LockMutex(a->live.lock);
     a->live.count = 0, a->live.loaded = false, a->live.version++;
     SDL_UnlockMutex(a->live.lock);
-    a->playing[0] = 0;
+    player_stop(&a->player);
+    a->theater = false;
 }
 
 // At launch: the saved session, checked (and renewed if it expired) on a worker.
@@ -216,13 +224,16 @@ static void window_path(const app *a, char *out, size_t size) { snprintf(out, si
 SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     app *a = SDL_calloc(1, sizeof *a);
     *state = a;
-    const char *data = NULL, *api_kind = NULL, *api_arg = NULL, *api_quality = NULL;
+    const char *data = NULL, *api_kind = NULL, *api_arg = NULL, *api_quality = NULL, *play = NULL;
     bool do_sign_in = false, do_sign_out = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) return printf("%s", usage), SDL_APP_SUCCESS;
         else if (!strcmp(argv[i], "--data") && i + 1 < argc) data = argv[++i];
         else if (!strcmp(argv[i], "--software")) a->software = true;
         else if (!strcmp(argv[i], "--demo")) a->demo = true;
+        else if (!strcmp(argv[i], "--play") && i + 1 < argc) play = argv[++i];
+        else if (!strcmp(argv[i], "--quality") && i + 1 < argc) a->quality = argv[++i];
+        else if (!strcmp(argv[i], "--audio-only")) a->audio_only = true;
         else if (!strcmp(argv[i], "--sign-in")) do_sign_in = true;
         else if (!strcmp(argv[i], "--sign-out")) do_sign_out = true;
         else if (!strcmp(argv[i], "--api") && i + 1 < argc) {
@@ -244,7 +255,7 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     const char *driver = NULL;
     if (a->shot) SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen"), SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
     else driver = gs_video_prepare(!a->software);
-    if (!SDL_Init(SDL_INIT_VIDEO)) return SDL_Log("SDL_Init: %s", SDL_GetError()), SDL_APP_FAILURE;
+    if (!SDL_Init(SDL_INIT_VIDEO | (a->shot ? 0 : SDL_INIT_AUDIO))) return SDL_Log("SDL_Init: %s", SDL_GetError()), SDL_APP_FAILURE;
     wake_event = SDL_RegisterEvents(1);
     a->persist = !a->shot && !a->demo && !a->stats_file;
     a->window = (gs_window_state){ (int)SDL_WINDOWPOS_CENTERED, (int)SDL_WINDOWPOS_CENTERED, 1100, 700, false, false };
@@ -266,6 +277,9 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     a->fonts = gs_fontset_system();
     a->ui = gs_ui_new(a->win, a->ren, a->fonts);
     a->jobs = gs_jobs_new(4);
+    if (!a->shot && !gs_mix_open(48000)) SDL_Log("audio: %s", SDL_GetError());  // (plays on without sound)
+    a->volume = 0.8f;
+    player_init(&a->player, a->ren, wake);
     a->images = gs_images_new(a->ren, a->jobs, 8u << 20);
     a->lock = SDL_CreateMutex();
     live_init(&a->live);
@@ -276,6 +290,11 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     } else if (twitch_session_load(a->dir, &a->session)) {
         a->auth = SIGNED_IN;
         gs_jobs_add(a->jobs, restore_job, a);
+    }
+    if (play) {  // straight to a channel, signed in or not: playback needs no account
+        a->auth = a->auth == SIGNED_OUT && !a->demo ? SIGNED_IN : a->auth;
+        watch(a, play, play);
+        a->theater = true;
     }
     // Test modes draw every frame; otherwise the window waits for events, timers and finished work.
     if (!a->shot && !a->stats_file) SDL_SetHint(SDL_HINT_MAIN_CALLBACK_RATE, "waitevent");
@@ -288,6 +307,7 @@ SDL_AppResult SDL_AppEvent(void *state, SDL_Event *e) {
     app *a = state;
     if (e->type == SDL_EVENT_QUIT || e->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) return SDL_APP_SUCCESS;
     if (gs_window_state_track(&a->window, a->win, e)) a->window_changed = true;
+    if (e->type == SDL_EVENT_MOUSE_MOTION) a->pointer_moved = SDL_GetTicks();
     if (e->type == SDL_EVENT_KEY_DOWN && (e->key.key == SDLK_F11 || (e->key.key == SDLK_RETURN && (e->key.mod & SDL_KMOD_ALT)))) {
         SDL_SetWindowFullscreen(a->win, !(SDL_GetWindowFlags(a->win) & SDL_WINDOW_FULLSCREEN));
         return SDL_APP_CONTINUE;
@@ -297,10 +317,19 @@ SDL_AppResult SDL_AppEvent(void *state, SDL_Event *e) {
     return SDL_APP_CONTINUE;
 }
 
-// When the window should next draw on its own: for the interface's timers, images arriving, and the list's refresh.
+// When the window should next draw on its own: every frame while video plays; otherwise for the
+// interface's timers, images arriving, the player's status, and the list's refresh.
 static void schedule(app *a) {
     if (a->shot || a->stats_file) return;
+    static bool continuous;
+    SDL_LockMutex(a->player.lock);
+    bool video = a->player.live && a->player.video, playing = a->player.state != PLAYER_IDLE;
+    SDL_UnlockMutex(a->player.lock);
+    if (video != continuous) SDL_SetHint(SDL_HINT_MAIN_CALLBACK_RATE, (continuous = video) ? "0" : "waitevent");
+    if (continuous) return;
     int ms = gs_ui_wait_ms(a->ui);
+    if (playing && (ms < 0 || ms > 500)) ms = 500;  // the player's status and buffer
+    if (a->theater && SDL_GetTicks() - a->pointer_moved < 3100 && (ms < 0 || ms > 200)) ms = 200;  // to hide the controls
     if (gs_jobs_pending(a->jobs) && (ms < 0 || ms > 150)) ms = 150;  // downloads and decodes finishing
     SDL_LockMutex(a->live.lock);
     uint64_t next = a->live.next_refresh;
@@ -318,7 +347,7 @@ static void schedule(app *a) {
 SDL_AppResult SDL_AppIterate(void *state) {
     app *a = state;
     gs_stats_frame_begin(&a->stats);
-    if (a->auth == SIGNED_IN) live_poll(&a->live, a->jobs, STREAMIT_CLIENT_ID, &a->session, a->lock, a->dir, wake);
+    if (a->auth == SIGNED_IN && a->session.access[0]) live_poll(&a->live, a->jobs, STREAMIT_CLIENT_ID, &a->session, a->lock, a->dir, wake);
     views_draw(a);
     gs_ui_end(a->ui);
     gs_images_end_frame(a->images);
@@ -328,6 +357,21 @@ SDL_AppResult SDL_AppIterate(void *state) {
         gs_pace_describe(&a->pace, note, sizeof note);
         size_t n = strlen(note);
         SDL_snprintf(note + n, sizeof note - n, "\nimages %.1f MB cached", gs_images_bytes(a->images) / 1048576.0);
+        SDL_LockMutex(a->player.lock);
+        if (a->player.live) {
+            static const char *const states[] = { "starting", "playing", "buffering", "ended", "failed" };
+            gs_live_info i = gs_live_get_info(a->player.live);
+            n = strlen(note);
+            SDL_snprintf(note + n, sizeof note - n, "\nstream %s %s, %s%s\nclock %.2f s, buffer %.2f s, queued %.1f s, behind %.1f s\nsegments %d, discontinuities %d, skips %d, stalls %d, renewals %d",
+                         a->player.login, a->player.playing, states[i.state], a->player.ad ? ", ad" : "", i.clock, i.buffered, i.queued, i.behind,
+                         i.segments, i.discontinuities, i.skips, i.stalls, i.renewals);
+            if (a->player.video) {
+                n = strlen(note);
+                SDL_snprintf(note + n, sizeof note - n, "\nvideo %s %dx%d, shown %lld, dropped %lld, queued %d", i.video.path ? i.video.path : "-",
+                             i.video.width, i.video.height, i.video.shown, i.video.dropped, i.video.queued);
+            }
+        }
+        SDL_UnlockMutex(a->player.lock);
         gs_stats_draw(&a->stats, a->ren, -12, 52, note);
         uint64_t now = SDL_GetTicks();
         if (a->stats_file && now >= a->stats_next) {
@@ -372,7 +416,10 @@ void SDL_AppQuit(void *state, SDL_AppResult result) {
     }
     if (wake_timer) SDL_RemoveTimer(wake_timer);
     SDL_SetAtomicInt(&a->auth_cancel, 1);
-    if (a->jobs) gs_jobs_wait(a->jobs), gs_jobs_free(a->jobs);
+    if (a->jobs) gs_jobs_wait(a->jobs);
+    if (a->player.lock) player_free(&a->player);
+    gs_mix_close();
+    gs_jobs_free(a->jobs);
     gs_images_free(a->images);
     live_free(&a->live);
     gs_ui_free(a->ui);

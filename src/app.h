@@ -10,6 +10,7 @@
 #include "gs_text.h"
 #include "gs_ui.h"
 #include "live.h"
+#include "player.h"
 #include "twitch.h"
 
 typedef enum { SIGNED_OUT, SIGNING_IN, SIGNED_IN } auth_state;
@@ -38,15 +39,19 @@ typedef struct {
     int selected;          // in the list's view
     bool compact;          // rows instead of cards
     int sort;              // a live_sort
-    char playing[64];      // the channel chosen to watch
-    char playing_name[128];
+    player player;
+    bool theater;          // the player fills the window
+    uint64_t pointer_moved;  // when the pointer last moved (the full-window player's controls show for a while after)
+    float volume;
+    bool muted;
 
     gs_window_state window;
     bool persist, window_changed;
     uint64_t next_save;
 
     // Options and test modes.
-    bool show_stats, demo, software;
+    bool show_stats, demo, software, audio_only;
+    const char *quality;   // --quality, the rendition asked for
     const char *shot;
     double shot_at, quit_at;
     const char *stats_file;
@@ -58,3 +63,4 @@ void views_draw(app *a);
 void sign_in_start(app *a);
 void sign_in_cancel(app *a);
 void sign_out(app *a);
+void watch(app *a, const char *login, const char *name);
