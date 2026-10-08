@@ -145,6 +145,12 @@ static void draw_sidebar(app *a, gs_rect side) {
 
 // ---- The player ----
 
+// The player alone, full screen, or back to the window as it was.
+static void set_theater(app *a, bool on) {
+    a->theater = on;
+    SDL_SetWindowFullscreen(a->win, on);
+}
+
 static void percent(float v, char *out, size_t size) { SDL_snprintf(out, size, "%d%%", (int)(v * 100 + 0.5f)); }
 
 // The picture, fitted to the stage with its own aspect, or what the player is doing instead.
@@ -211,7 +217,7 @@ static void draw_player_bar(app *a, gs_rect bar) {
     }
     SDL_UnlockMutex(p->lock);
     gs_rect full = gs_cut_right(&c, 70);
-    if (gs_ui_button(ui, full, a->theater ? "Window" : "Full") || gs_ui_key(ui, SDLK_F, 0)) a->theater = !a->theater;
+    if (gs_ui_button(ui, full, a->theater ? "Window" : "Full") || gs_ui_key(ui, SDLK_F, 0)) set_theater(a, !a->theater);
     gs_cut_right(&c, 8);
     char pct[16];
     percent(a->volume, pct, sizeof pct);
@@ -222,7 +228,7 @@ static void draw_player_bar(app *a, gs_rect bar) {
     gs_cut_right(&c, 8);
     if (gs_ui_button(ui, gs_cut_right(&c, 70), a->muted ? "Unmute" : "Mute") || gs_ui_key(ui, SDLK_M, 0)) a->muted = !a->muted, player_set_volume(p, a->volume, a->muted);
     gs_cut_right(&c, 6);
-    if (state != PLAYER_IDLE && gs_ui_button(ui, gs_cut_right(&c, 64), "Stop")) player_stop(p), a->theater = false;
+    if (state != PLAYER_IDLE && gs_ui_button(ui, gs_cut_right(&c, 64), "Stop")) player_stop(p), set_theater(a, false);
     gs_cut_right(&c, 6);
     if (count > 1 && gs_ui_dropdown(ui, gs_cut_right(&c, 118), "quality", items, count, &chosen)) {
         char login[64], name[128];
@@ -265,7 +271,7 @@ static void draw_main(app *a, gs_rect m) {
 static void draw_theater(app *a, gs_rect win) {
     draw_stage(a, win);
     if (SDL_GetTicks() - a->pointer_moved < 3000) draw_player_bar(a, gs_cut_bottom(&win, 44));
-    if (gs_ui_key(a->ui, SDLK_ESCAPE, 0)) a->theater = false;
+    if (gs_ui_key(a->ui, SDLK_ESCAPE, 0)) set_theater(a, false);
 }
 
 // What streamit is built from, with each part's licence.
