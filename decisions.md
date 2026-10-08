@@ -120,3 +120,16 @@ The skeleton (`src/main.c`: window, text, the stats overlay, `--shot`, `--stats`
 | Memory, idle, after 6 s | 162 MB on this host (NVIDIA's GL driver in the process) | 14.8 MB private working set |
 
 Idle CPU is 9.7% of a core on Windows because every frame is redrawn at the display rate; an idle interface that redraws only when something changes is part of the browsing milestone.
+
+### M5: browsing (2026-10-08)
+
+Layout is gesso's own rectangle cutting, not Clay. For the channel list's layout (a sidebar with 100 cards, a main pane, a dropdown), Clay v0.14 added 142 KB to a Windows executable and needs a 754 KB arena at 1,024 elements, and it is a 4,393-line dependency; `gs_ui`'s layout is a few cut functions in its own file. Clay is zlib-licensed and 4,393 lines in its latest release, not the MIT and 5,058 lines the plan stated.
+
+| Measure, Windows PC, `--demo` (100 channels with thumbnails) | Value |
+|---|---|
+| Memory, idle | 21.7 MB private working set |
+| CPU, idle (the window waits for events) | 0.39% of one core |
+| Memory, drawing every frame (`--stats`) | 23.0 MB |
+| Executable, ReleaseFast | 6.24 MB |
+
+Not checked on real hardware: display scale 2 (no high-DPI display is attached to the reference machines; `gs_ui` takes its scale from the window's pixel density), and Japanese typed through a system input method (no keyboard at the machines; the field's composition handling is tested with synthetic input-method events in gesso's tests).
