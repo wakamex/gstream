@@ -195,3 +195,9 @@ The Linux run confirms the app takes the VAAPI path and decodes with little CPU;
 ### Signed in with a real account (2026-10-08)
 
 `streamit --sign-in` completed the device code flow for a real Twitch account and saved the session. With it, `--api live` listed the account's 8 live followed channels, and the window showed the same 8 with thumbnails, viewer counts, titles and categories. One title's U+2A4A (a mathematical operator) draws as a box on this host because no installed font covers it.
+
+### VAAPI on AMD, with RPM Fusion's Mesa (2026-10-08)
+
+With `mesa-va-drivers-freeworld` 26.2.3 installed, hpbook's Radeon (Renoir) decodes H.264 through VAAPI. `bench-video` on the 1080p60 capture, offscreen for 20 s: VAAPI 13.4% of one core and 52 MB, software 75.5% and 96 MB. The app played lirik live at 480p30 through VAAPI for 100 s with no frame dropped and no stall, at 11.8% CPU.
+
+hpbook's Wi-Fi fetches about 2.1 Mbit/s from Twitch's CDN, so a 2 s segment of the 8 Mbit/s 1080p60 rendition takes 6.8 s and that rendition never starts there: the player waits on the first segment and shows "Starting…". streamit has no adaptive bitrate. "Best" always means the top rendition, and the quality picker is the way down; choosing a rendition the connection can carry, as Twitch's web player does, is a gap for after the first release.
