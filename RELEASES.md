@@ -10,7 +10,7 @@ streamit is released as prebuilt archives on GitHub Releases, built and publishe
 | Windows x86-64 | `x86_64-windows-gnu` | `streamit-vX.Y.Z-x86_64-windows.zip` |
 | FFmpeg's source and build files | none | `streamit-vX.Y.Z-ffmpeg-source.tar.gz` |
 
-Both binaries are built on Linux with Zig 0.16.0. The Linux floor is glibc 2.27 (Ubuntu 18.04); gesso supplies the one newer glibc function SDL links. To check the floor, run the Linux archive in `docker.io/library/ubuntu:18.04` with `--demo --shot`. macOS is built and tested by `.github/workflows/macos.yml` but not released.
+Both binaries are built on Linux with Zig 0.16.0. gesso is pinned by commit in `build.zig.zon`; to build against a local gesso checkout while changing both, use `zig build --fork=../gesso`. The Linux floor is glibc 2.27 (Ubuntu 18.04); gesso supplies the one newer glibc function SDL links. To check the floor, run the Linux archive in `docker.io/library/ubuntu:18.04` with `--demo --shot`. macOS is built and tested by `.github/workflows/macos.yml` but not released.
 
 Each archive holds the executable, `README.md`, `LICENSE`, and a `licenses/` folder with the license texts of everything compiled in: gesso (MIT), stb, kb_text_shape (zlib), Opus (BSD-3-Clause), FFmpeg (GNU Lesser General Public License (LGPL) 2.1 or later), SDL3 with its REUSE license set, and on Linux SDL's Wayland protocol code and the VA-API headers. FFmpeg is linked statically, so every release also attaches FFmpeg's unmodified release tarball and the files gesso builds it with, which together let a user relink streamit with a modified FFmpeg. `release/stage.sh` builds one asset:
 
@@ -45,7 +45,6 @@ gh release verify-asset vX.Y.Z ASSET --repo wakamex/streamit
 
 ## One-time setup
 
-- Pin gesso by URL and hash in `build.zig.zon` in place of the local path, so CI can fetch it.
 - Set the repository variable `TWITCH_CLIENT_ID`.
 - Turn on immutable releases in the repository settings.
 - Once `release-eligible / validate` has passed on `main`, add a tag ruleset named `Validated release tags` for `refs/tags/v*` that requires that check (from the GitHub Actions app that produced it), with no bypass actors, deletion restricted and non-fast-forward updates blocked.

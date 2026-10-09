@@ -4,7 +4,10 @@
     .fingerprint = 0x6820440b38426552,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
-        .gesso = .{ .path = "../gesso" },
+        .gesso = .{
+            .url = "git+https://github.com/wakamex/gesso.git#b6e92771bcc31030a9d02145c6014ed3fd4cc14e",
+            .hash = "gesso-0.0.0-LFvUrzx_PgDjIR33oz0BijxblTG2_D9_oBlUj1STUHMR",
+        },
     },
     .paths = .{ "build.zig", "build.zig.zon", "src", "assets", "LICENSE", "README.md" },
 }
