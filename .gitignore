@@ -20,3 +20,6 @@ Thumbs.db
 
 # An older local repository of this project, kept for its history
 .git-local/
+
+# Downloaded papers and their extracted text stay local; literature/README.md is the tracked index.
+/literature/*/
