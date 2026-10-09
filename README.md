@@ -6,14 +6,14 @@ gstream is not made or endorsed by Twitch.
 
 ## Size and memory
 
-Measured on Windows 11 (Ryzen 7 3800XT, RTX 3080) against the Qt and libmpv build gstream replaced. CPU is the share of one core; memory is the private working set.
+Measured on Windows 11 (Ryzen 7 3800XT, RTX 3080). CPU is the share of one core; memory is the private working set.
 
-| Measure | Qt build | gstream |
-|---|---|---|
-| Download | 195 MB folder | 2.5 MB zip, one 6.3 MB executable |
-| Browsing the list, idle | not measured | 22 MB, 0.4% CPU |
-| Playing a 1080p60 channel | 434 MB, 106% CPU (software decoding) | 42 MB, 12% CPU (Direct3D 11 decoding) |
-| Playing 1080p60, software decoding | 434 MB, 106% CPU | 91 MB, 36% CPU |
+| Measure | gstream |
+|---|---|
+| Download | 2.5 MB zip, one 6.3 MB executable |
+| Browsing the list, idle | 22 MB, 0.4% CPU |
+| Playing a 1080p60 channel, Direct3D 11 decoding | 42 MB, 12% CPU |
+| Playing 1080p60, software decoding | 91 MB, 36% CPU |
 
 ## Using it
 
