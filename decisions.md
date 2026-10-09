@@ -1,13 +1,6 @@
 # Decisions
 
-Decisions made while carrying out `PLAN.md`, with the reason for each. Measurements the plan asks to record are kept here too, under Measurements.
-
-## Working setup
-
-- `PLAN.md` stays uncommitted, as asked. This file records what the plan says to record "in this file".
-- gesso is pushed, and its workflow runs on Linux, Windows and macOS. gstream pins gesso by commit; gstream and gtube are not pushed yet.
-- gtube's working tree holds another session's uncommitted Bend work (`src/bend/`, `src/viz.c`, `README.md`). Commits in gtube stage only the files this work changes.
-- gesso's working tree holds an uncommitted README edit (the Principles section) from another session. gesso commits stage only the files this work changes, and README additions for new modules are made around that edit.
+Design decisions behind gstream, with the reason for each, and the measurements behind them, under Measurements.
 
 ## Reference machines
 
@@ -24,7 +17,7 @@ macOS code paths are written to the platform's documented APIs but cannot be bui
 
 ### Twitch segments come in two formats (2026-10-08)
 
-The plan assumed transport stream segments. Live captures show both: lirik, ohnepixel and nickmercs serve H.264 Main profile renditions as fragmented MP4 (`EXT-X-MAP` initialization segment, `mp42` brand, AAC-LC at 48 kHz), while jynxzi serves H.264 High profile as transport stream. gesso gets a fragmented MP4 demuxer, `gs_mp4`, beside `gs_ts`; both emit H.264 in Annex B form and raw AAC frames, so `gs_video` and `gs_aac` take one input format each. `PLAN.md` is updated to match.
+Twitch serves segments in two formats. Live captures show both: lirik, ohnepixel and nickmercs serve H.264 Main profile renditions as fragmented MP4 (`EXT-X-MAP` initialization segment, `mp42` brand, AAC-LC at 48 kHz), while jynxzi serves H.264 High profile as transport stream. gesso gets a fragmented MP4 demuxer, `gs_mp4`, beside `gs_ts`; both emit H.264 in Annex B form and raw AAC frames, so `gs_video` and `gs_aac` take one input format each.
 
 ### FFmpeg 9.0.2, generated once per target (2026-10-08)
 
@@ -109,7 +102,7 @@ Each release attaches a third asset with FFmpeg's unmodified release tarball (ch
 | Windows package folder (`out\windows\StreamIt`) | 195 MB |
 | Windows, playing lirik live (1080p60), libmpv as shipped (software decoding) | 106% of one core, private working set 434 MB average, 453 MB peak |
 
-Measured on the Windows PC in its desktop session with `STREAMIT_DEV_TWITCH_CHANNEL=lirik`, sampling for 20 s after 20 s of start-up. The Qt build has no `hwdec` setting, and libmpv reads no configuration file, so the `hwdec=auto-safe` comparison the plan names would need a rebuilt Qt app; the hardware milestone compares against the shipped figure and against `gs_video`'s own software path instead. Browsing memory for the Qt build is not measured: its demo channel list (`STREAMIT_UI_FIXTURE`) is compiled out of release builds.
+Measured on the Windows PC in its desktop session with `STREAMIT_DEV_TWITCH_CHANNEL=lirik`, sampling for 20 s after 20 s of start-up. The Qt build has no `hwdec` setting, and libmpv reads no configuration file, so comparing with its hardware decoding (`hwdec=auto-safe`) would need a rebuilt Qt app; the hardware milestone compares against the shipped figure and against `gs_video`'s own software path instead. Browsing memory for the Qt build is not measured: its demo channel list (`STREAMIT_UI_FIXTURE`) is compiled out of release builds.
 
 ### M1: decoding paths (2026-10-08)
 
@@ -138,7 +131,7 @@ Idle CPU is 9.7% of a core on Windows because every frame is redrawn at the disp
 
 ### M5: browsing (2026-10-08)
 
-Layout is gesso's own rectangle cutting, not Clay. For the channel list's layout (a sidebar with 100 cards, a main pane, a dropdown), Clay v0.14 added 142 KB to a Windows executable and needs a 754 KB arena at 1,024 elements, and it is a 4,393-line dependency; `gs_ui`'s layout is a few cut functions in its own file. Clay is zlib-licensed and 4,393 lines in its latest release, not the MIT and 5,058 lines the plan stated.
+Layout is gesso's own rectangle cutting, not Clay. For the channel list's layout (a sidebar with 100 cards, a main pane, a dropdown), Clay v0.14 added 142 KB to a Windows executable and needs a 754 KB arena at 1,024 elements, and it is a 4,393-line dependency; `gs_ui`'s layout is a few cut functions in its own file. Clay is zlib-licensed.
 
 | Measure, Windows PC, `--demo` (100 channels with thumbnails) | Value |
 |---|---|
