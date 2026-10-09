@@ -96,7 +96,7 @@ Twitch's H.264 streams leave the colour matrix, primaries and range unstated. SD
 
 v0.1.0 ships Linux (glibc 2.27) and Windows archives, as gtube does. macOS waits: no Mac is reachable to run a build, and signing and notarisation need an Apple developer account the project does not have. `.github/workflows/macos.yml` builds and tests on macOS once pushed, and gesso's workflow runs its video tests there; an unsigned `.app` can follow once a macOS run has played a stream.
 
-Each release attaches a third asset with FFmpeg's unmodified release tarball (checked against its SHA-256) and gesso's FFmpeg build files, following FFmpeg's licence checklist for a static link. glibc 2.27 needs a stand-in for `posix_spawn_file_actions_addchdir_np`, which SDL links; it moved from gtube into gesso so every app gets it. gtube keeps its own copy until its gesso pin includes gesso's, which is harmless because the linker takes gesso's only when nothing else defines the function. The glibc 2.27 build starts and renders in an Ubuntu 18.04 container.
+Each release attaches a third asset with FFmpeg's unmodified release tarball (checked against its SHA-256) and gesso's FFmpeg build files, following FFmpeg's licence checklist for a static link. glibc 2.27 needs a stand-in for `posix_spawn_file_actions_addchdir_np`, which SDL links; it moved from gtube into gesso so every app gets it. gtube dropped its own copy when it moved to that gesso, since both together are a duplicate symbol. The glibc 2.27 build starts and renders in an Ubuntu 18.04 container.
 
 ## Measurements
 
