@@ -36,10 +36,7 @@ jobs:
         with:
           version: 0.16.0
       - name: Build the release assets
-        env:
-          TWITCH_CLIENT_ID: ${{ vars.TWITCH_CLIENT_ID }}
         run: |
-          test -n "$TWITCH_CLIENT_ID"  # (the repository variable; without it the release could not sign in)
           release/stage.sh linux release-assets
           release/stage.sh windows release-assets
           release/stage.sh sources release-assets

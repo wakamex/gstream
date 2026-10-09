@@ -68,7 +68,7 @@ Every control and feature of the Qt build (`app/Main.qml` at `qt-final`), and wh
 | Channel card: thumbnail, name, viewers, title, category, state; click to play | kept |
 | Player bar: source label, Stop, Mute, volume slider with percentage, Full/Window | kept |
 | Fullscreen player with the same controls; Esc leaves fullscreen | kept |
-| Settings: Twitch Client ID field and Save | replaced: the built-in client ID, overridable with `--client-id` |
+| Settings: Twitch Client ID field and Save | replaced: the built-in client ID, overridable at build time with `-Dclient-id` |
 | Token storage dropdown | dropped: one storage, `gs_secret` |
 | Diagnostics panel (Qt, client ID, token storage, resolver, libmpv) | replaced: the diagnostics overlay (renderer, decoding path, buffer, dropped frames, clock error, memory, CPU) |
 | Dev playback mode (`STREAMIT_DEV_TWITCH_CHANNEL`) | replaced: `--play CHANNEL` |

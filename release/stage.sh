@@ -5,8 +5,7 @@
 # compiled into it: OUT_DIR/gstream-vVERSION-x86_64-linux.tar.gz or -x86_64-windows.zip. sources
 # packs what the LGPL asks to accompany the binaries: FFmpeg's release tarball and the files gesso
 # builds it with, as OUT_DIR/gstream-vVERSION-ffmpeg-source.tar.gz. VERSION is build.zig.zon's
-# .version. Run from a clean checkout; zig 0.16 fetches the dependencies into zig-pkg/. The Twitch
-# Client ID comes from TWITCH_CLIENT_ID in the environment, or else from .env (see build.zig).
+# .version. Run from a clean checkout; zig 0.16 fetches the dependencies into zig-pkg/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -63,7 +62,7 @@ case $target in
     *) echo "unknown target: $target" >&2; exit 1 ;;
 esac
 name=gstream-v$version-x86_64-$target
-zig build --release=fast -Dtarget="$zig_target" -p "$work/prefix" ${TWITCH_CLIENT_ID:+-Dclient-id="$TWITCH_CLIENT_ID"}
+zig build --release=fast -Dtarget="$zig_target" -p "$work/prefix"
 
 stage=$work/$name
 mkdir -p "$stage/licenses"

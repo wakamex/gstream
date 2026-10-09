@@ -6,7 +6,6 @@ zig-pkg/
 # Local credentials and configuration
 .env
 .env.*
-!.env.example
 
 # Agent orchestration run records
 .aop/

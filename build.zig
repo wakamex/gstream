@@ -2,8 +2,12 @@
 //   zig build run                          build and run
 //   zig build test                         run the tests
 //   zig build -Doptimize=ReleaseFast -Dtarget=x86_64-windows-gnu -p zig-out/windows
-// The Twitch application's Client ID comes from -Dclient-id or TWITCH_CLIENT_ID in .env.
+// -Dclient-id=ID builds with another Twitch application's Client ID than gstream's own.
 const std = @import("std");
+
+// gstream's Twitch application. A Client ID is public: every request carries it, and the binary
+// holds it; the application's secret, which device code sign-in does not use, is what stays private.
+const client_id_default = "w5v6a57dh8xyu7wvqr5mdatbzetgho";
 const zon = @import("build.zig.zon");
 
 const flags: []const []const u8 = &.{ "-std=c11", "-ffp-contract=off", "-Wall", "-Wextra", "-Wno-unused-parameter", "-Wno-missing-field-initializers" };
@@ -12,7 +16,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const gesso = b.dependency("gesso", .{ .target = target, .optimize = optimize, .video = true }).artifact("gesso");
-    const client_id = b.option([]const u8, "client-id", "Twitch application Client ID (default: TWITCH_CLIENT_ID in .env)") orelse envClientId(b);
+    const client_id = b.option([]const u8, "client-id", "Twitch application Client ID (default: gstream's)") orelse client_id_default;
 
     const mod = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .strip = optimize != .Debug });
     mod.addCSourceFiles(.{ .root = b.path("src"), .files = &.{ "main.c", "views.c", "live.c", "player.c", "twitch.c" }, .flags = flags });
@@ -36,13 +40,3 @@ pub fn build(b: *std.Build) void {
     b.step("test", "Run the tests").dependOn(&b.addRunArtifact(b.addExecutable(.{ .name = "gstream-tests", .root_module = tests })).step);
 }
 
-// The public Client ID from a local .env (TWITCH_CLIENT_ID=...), or empty: sign-in then says it is missing.
-fn envClientId(b: *std.Build) []const u8 {
-    const env = b.build_root.handle.readFileAlloc(b.graph.io, ".env", b.allocator, .limited(64 * 1024)) catch return "";
-    var lines = std.mem.tokenizeAny(u8, env, "\r\n");
-    while (lines.next()) |line| {
-        const key = "TWITCH_CLIENT_ID=";
-        if (std.mem.startsWith(u8, line, key)) return std.mem.trim(u8, line[key.len..], " \t\"'");
-    }
-    return "";
-}

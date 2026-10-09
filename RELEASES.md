@@ -20,7 +20,7 @@ release/stage.sh windows dist
 release/stage.sh sources dist
 ```
 
-The Twitch application's Client ID is compiled in. `stage.sh` takes it from `TWITCH_CLIENT_ID` in the environment or from `.env`; `publish.yml` reads the repository variable `TWITCH_CLIENT_ID` and refuses to build without it.
+gstream's Twitch application Client ID is set in `build.zig` and compiled in; it is public, so it is committed like any other constant.
 
 ## Checks
 
@@ -45,6 +45,5 @@ gh release verify-asset vX.Y.Z ASSET --repo wakamex/gstream
 
 ## One-time setup
 
-- Set the repository variable `TWITCH_CLIENT_ID`.
 - Turn on immutable releases in the repository settings.
 - Once `release-eligible / validate` has passed on `main`, add a tag ruleset named `Validated release tags` for `refs/tags/v*` that requires that check (from the GitHub Actions app that produced it), with no bypass actors, deletion restricted and non-fast-forward updates blocked.

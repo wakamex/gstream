@@ -48,7 +48,7 @@ static void draw_sign_in(app *a, gs_rect win) {
         if (ready && (gs_ui_clicked(ui, button) || gs_ui_key(ui, SDLK_RETURN, 0))) sign_in_start(a);
     }
     gs_cut_top(&c, 14);
-    const char *note = !GSTREAM_CLIENT_ID[0] ? "This build has no Twitch Client ID (TWITCH_CLIENT_ID in .env when building)." : message;
+    const char *note = !GSTREAM_CLIENT_ID[0] ? "This build has no Twitch Client ID (-Dclient-id when building)." : message;
     gs_ui_text(ui, gs_cut_top(&c, 20), note, st->small_px, st->muted, 0);
 }
 

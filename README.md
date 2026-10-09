@@ -41,7 +41,7 @@ zig build --release=fast
 zig build test
 ```
 
-Signing in needs a Twitch application's Client ID, given with `-Dclient-id=...` or as `TWITCH_CLIENT_ID=...` in a `.env` file beside `build.zig`. Without one, the build plays channels (`--play`) but cannot sign in.
+The build signs in as gstream's own Twitch application. To use your own registration, build with `-Dclient-id=YOUR_CLIENT_ID`.
 
 ## License
 

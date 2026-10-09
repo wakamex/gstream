@@ -59,7 +59,7 @@ static bool sign_in_here(const char *dir) {
     gs_oauth_client c = twitch_oauth_client(GSTREAM_CLIENT_ID);
     gs_oauth_device d = { 0 };
     char msg[256];
-    if (!GSTREAM_CLIENT_ID[0]) return printf("no Twitch Client ID was built in (TWITCH_CLIENT_ID in .env)\n"), false;
+    if (!GSTREAM_CLIENT_ID[0]) return printf("no Twitch Client ID was built in (-Dclient-id)\n"), false;
     if (gs_oauth_start(&c, &d, msg, sizeof msg) != GS_OAUTH_OK) return printf("could not start: %s\n", msg), false;
     printf("Open %s and enter the code %s\n", d.verification_uri, d.user_code);
     fflush(stdout);
