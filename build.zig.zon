@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .gesso = .{
-            .url = "git+https://github.com/wakamex/gesso.git#b6e92771bcc31030a9d02145c6014ed3fd4cc14e",
-            .hash = "gesso-0.0.0-LFvUrzx_PgDjIR33oz0BijxblTG2_D9_oBlUj1STUHMR",
+            .url = "git+https://github.com/wakamex/gesso.git#b9fe676a41024d8e7c3c9dae63afaefdd7ee43e0",
+            .hash = "gesso-0.0.0-LFvUrwy4PgAdgypilpA8IdDoHI3LN6Vk2lIOL7dt7ZrB",
         },
     },
     .paths = .{ "build.zig", "build.zig.zon", "src", "assets", "LICENSE", "README.md" },
