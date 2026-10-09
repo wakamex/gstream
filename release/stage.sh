@@ -30,6 +30,7 @@ package() {
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+zig build --fetch=all  # (puts the dependencies, gesso's lazy FFmpeg among them, in zig-pkg/ for the lookups below)
 gesso=$(package build.zig.zon gesso)
 
 if [ "$target" = sources ]; then
