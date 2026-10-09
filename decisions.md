@@ -198,8 +198,18 @@ The Linux run confirms the app takes the VAAPI path and decodes with little CPU;
 
 With `mesa-va-drivers-freeworld` 26.2.3 installed, hpbook's Radeon (Renoir) decodes H.264 through VAAPI. `bench-video` on the 1080p60 capture, offscreen for 20 s: VAAPI 13.4% of one core and 52 MB, software 75.5% and 96 MB. The app played lirik live at 480p30 through VAAPI for 100 s with no frame dropped and no stall, at 11.8% CPU.
 
-hpbook's Wi-Fi fetches about 2.1 Mbit/s from Twitch's CDN, so a 2 s segment of the 8 Mbit/s 1080p60 rendition takes 6.8 s and that rendition never starts there: the player waits on the first segment and shows "Starting…". gstream has no adaptive bitrate. "Best" always means the top rendition, and the quality picker is the way down; choosing a rendition the connection can carry, as Twitch's web player does, is a gap for after the first release.
+hpbook's Wi-Fi fetched about 2.1 Mbit/s from Twitch's CDN at the time, so a 2 s segment of the 8 Mbit/s 1080p60 rendition took 6.8 s and that rendition never started there: the player waited on the first segment and showed "Starting…". That led to adaptive play, below.
 
 ### gesso on GitHub: three systems in CI (2026-10-08)
 
 gesso's workflow passes on Ubuntu 24.04, Windows Server 2025 and macOS 15 (Apple silicon), each running the tests with and without the video modules, so `gs_video`'s VideoToolbox path and the macOS FFmpeg configuration now build and pass their tests on a Mac. Two fixes came out of the first runs: the interface test's offscreen window was never created on macOS (it now brings its own graphics context, as the apps' headless shots do), and NASM built on Windows crashed at random in Zig 0.16's `strnlen`, which reads past the string. gesso supplies its own `strnlen` to NASM and to its MinGW builds, which also covers SDL's calls in the Windows apps.
+
+### Adaptive quality (2026-10-08)
+
+Auto is the default quality. gesso's `gs_live` plays the channel's master playlist and `gs_abr` picks the rendition: the lower of a fast and a slow throughput average (half-lives 3 and 9 s), each download weighted by the longer of its time and its media's; the best rendition within 70% of it; down at once, up one step with two segments buffered and 15 s since the last switch (doubled after a step up that did not hold); a download given up for the rendition below when it would miss what is buffered. Downloads are timed from their first byte, since Twitch's first byte can take most of a second. The rules follow hls.js, Shaka and ExoPlayer, as the piracy session laid them out; the weighting differs from hls.js's (download time alone), which recovered from a slow spell in 24 s where this takes 3.
+
+Tests use gesso's `tests/streams/ladder.sh` (540p, 360p and 180p sharing segment boundaries and timestamps) served by `tests/streams/live.py` through a link capped on a schedule. With 4 Mbit/s falling to 800 kbit/s and back, playback stepped down within a second of the drop and back up after 3 and 23 s, with no stall or dropped frame, in software and through VAAPI. On Twitch, a channel started at 480p and reached 1080p60 within 18 s through VAAPI on hpbook and Direct3D 11 on the Windows PC, again with no stall or dropped frame at the switches. The last estimate is kept in `bandwidth.txt` in the data folder, so the next start skips the climb.
+
+### M7 again, on an idle desktop (2026-10-08)
+
+The 30-minute synthetic 1080p60 run in software, repeated with nobody using the Windows PC: 107,857 frames shown and 29 dropped, 0.87 a minute (3 at start-up, then pairs, and one burst of 12), so software decoding meets the target of under one a minute. Jitter averaged 0.37 ms and clock error 5.2 ms, at 34.9% of one core and 92 MB. The earlier run's 2.7 a minute came from the desktop being in use.

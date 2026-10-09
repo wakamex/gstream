@@ -26,7 +26,7 @@ Keys:
 - `M` mutes. `F1` shows the diagnostics overlay: the rendition, buffer, decoding path, dropped frames, clock error, CPU and memory.
 - `F11` or `Alt+Enter` makes the window full screen.
 
-The player bar's quality menu picks a rendition, down to audio only. Video is decoded by the graphics card where the system offers it ([Video Acceleration API (VA-API)](https://github.com/intel/libva) on Linux, Direct3D 11 on Windows) and in software otherwise; `--software` forces software decoding.
+The quality is chosen automatically by default: gstream measures how fast segments arrive and moves between the channel's renditions as the connection allows, showing the one in use ("Auto 720p60"). The player bar's quality menu fixes a rendition instead, down to audio only. Video is decoded by the graphics card where the system offers it ([Video Acceleration API (VA-API)](https://github.com/intel/libva) on Linux, Direct3D 11 on Windows) and in software otherwise; `--software` forces software decoding.
 
 `gstream --help` lists the command-line options, such as `--play CHANNEL` to start watching a channel straight away and `--sign-in` to sign in from a terminal.
 
