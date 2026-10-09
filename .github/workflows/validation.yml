@@ -21,13 +21,13 @@ jobs:
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: 0.16.0
-      - name: Run the tests
-        run: zig build test
-      - name: Build the release assets
+      - name: Build the release assets from a clean checkout, as publish.yml does
         run: |
           release/stage.sh linux dist
           release/stage.sh windows dist
           release/stage.sh sources dist
+      - name: Run the tests
+        run: zig build test
       - name: Start the Linux build and render a frame
         run: |
           set -euo pipefail
