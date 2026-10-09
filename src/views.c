@@ -207,10 +207,16 @@ static void draw_player_bar(app *a, gs_rect bar) {
     char label[200];
     if (p->state == PLAYER_IDLE) label[0] = 0;
     else SDL_snprintf(label, sizeof label, "%s%s%s", p->name, p->playing[0] ? " \xC2\xB7 " : "", p->playing);
+    gs_hls_variant now;
+    if (p->live && gs_live_rendition(p->live, &now)) {  // adaptive: the rendition chosen at the moment
+        char name[64];
+        twitch_variant_name(&now, name, sizeof name);
+        SDL_snprintf(label, sizeof label, "%s \xC2\xB7 Auto %s", p->name, name);
+    }
     player_state state = p->state;
-    // The quality: "Best", then the channel's renditions once it has resolved.
+    // The quality: "Auto" (adaptive), then the channel's renditions once it has resolved.
     char names[16][32];
-    const char *items[17] = { "Best" };
+    const char *items[17] = { "Auto" };
     int count = 1, chosen = 0;
     for (int i = 0; i < p->quality_count; i++) {
         if (!SDL_strcmp(p->qualities[i], p->quality)) chosen = count;
@@ -234,7 +240,7 @@ static void draw_player_bar(app *a, gs_rect bar) {
     if (count > 1 && gs_ui_dropdown(ui, gs_cut_right(&c, 118), "quality", items, count, &chosen)) {
         char login[64], name[128];
         SDL_strlcpy(login, p->login, sizeof login), SDL_strlcpy(name, p->name, sizeof name);
-        player_start(p, a->jobs, login, name, chosen ? items[chosen] : "best", !a->audio_only);
+        player_start(p, a->jobs, login, name, chosen ? items[chosen] : "auto", !a->audio_only);
     }
     gs_cut_right(&c, 10);
     gs_ui_text(ui, c, label, st->text_px, st->text, -1);

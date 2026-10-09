@@ -353,6 +353,7 @@ twitch_error twitch_resolve(const char *channel, const char *quality, bool low_l
         if (e == TW_UNKNOWN && status == 403) e = TW_LOGIN_REQUIRED;
         say(message, size, twitch_error_text(e));
     } else {
+        if (SDL_strlcpy(out->master, url, sizeof out->master) >= sizeof out->master) out->master[0] = 0;
         out->count = gs_hls_master(answer, len, url, out->variants, (int)SDL_arraysize(out->variants));
         if (out->count > (int)SDL_arraysize(out->variants)) out->count = (int)SDL_arraysize(out->variants);
         int i = out->count > 0 ? twitch_pick_variant(out->variants, out->count, quality) : -1;

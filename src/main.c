@@ -20,7 +20,7 @@ static const char usage[] =
     "  --api live                              print the followed channels that are live\n"
     "  --api resolve CHANNEL [QUALITY]         print a channel's stream (QUALITY such as best, 720p60, audio_only)\n"
     "  --play CHANNEL                          start watching a channel\n"
-    "  --quality Q, --audio-only               the rendition to play (best, 720p60, audio_only...)\n"
+    "  --quality Q, --audio-only               the rendition to play (auto, best, 720p60, audio_only...)\n"
     "  --url URL                               play an HLS media playlist directly, for testing\n"
     "  --demo                                  100 made-up channels, for trying the interface offline\n"
     "  --software                              decode video in software\n"
@@ -223,6 +223,24 @@ static void data_dir(const char *data, char *out, size_t size) {
 
 static void window_path(const app *a, char *out, size_t size) { snprintf(out, size, "%swindow.txt", a->dir); }
 
+// The last throughput estimate, in bits a second, kept between runs so adaptive play starts at a
+// rendition the connection carried.
+static double load_bandwidth(const app *a) {
+    char path[1200];
+    snprintf(path, sizeof path, "%sbandwidth.txt", a->dir);
+    char *text = SDL_LoadFile(path, NULL);
+    double bps = text ? SDL_strtod(text, NULL) : 0;
+    SDL_free(text);
+    return bps > 0 && bps < 1e11 ? bps : 0;
+}
+
+static void save_bandwidth(const app *a, double bps) {
+    char path[1200], text[32];
+    snprintf(path, sizeof path, "%sbandwidth.txt", a->dir);
+    int n = snprintf(text, sizeof text, "%.0f\n", bps);
+    SDL_SaveFile(path, text, (size_t)n);
+}
+
 SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     app *a = SDL_calloc(1, sizeof *a);
     *state = a;
@@ -285,6 +303,7 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     a->volume = 0.8f;
     player_init(&a->player, a->ren, wake);
     player_set_volume(&a->player, a->volume, a->muted);
+    if (a->persist) a->player.bandwidth = load_bandwidth(a);
     a->images = gs_images_new(a->ren, a->jobs, 8u << 20);
     a->lock = SDL_CreateMutex();
     live_init(&a->live);
@@ -376,6 +395,12 @@ SDL_AppResult SDL_AppIterate(void *state) {
             SDL_snprintf(note + n, sizeof note - n, "\nstream %s %s, %s%s\nclock %.2f s, buffer %.2f s, queued %.1f s, behind %.1f s\nsegments %d, discontinuities %d, skips %d, stalls %d, renewals %d",
                          a->player.login, a->player.playing, states[i.state], a->player.ad ? ", ad" : "", i.clock, i.buffered, i.queued, i.behind,
                          i.segments, i.discontinuities, i.skips, i.stalls, i.renewals);
+            gs_hls_variant v;
+            if (gs_live_rendition(a->player.live, &v)) {
+                n = strlen(note);
+                SDL_snprintf(note + n, sizeof note - n, "\nadaptive %dx%d at %.2f Mbit/s, estimate %.2f Mbit/s, switches %d", v.width, v.height,
+                             v.bandwidth / 1e6, i.bandwidth / 1e6, i.switches);
+            }
             if (a->player.video) {
                 n = strlen(note);
                 SDL_snprintf(note + n, sizeof note - n, "\nvideo %s %dx%d, shown %lld, dropped %lld, queued %d\nclock error %.1f ms (largest %.1f), jitter %.1f ms",
@@ -429,7 +454,8 @@ void SDL_AppQuit(void *state, SDL_AppResult result) {
     if (wake_timer) SDL_RemoveTimer(wake_timer);
     SDL_SetAtomicInt(&a->auth_cancel, 1);
     if (a->jobs) gs_jobs_wait(a->jobs);
-    if (a->player.lock) player_free(&a->player);
+    if (a->player.lock) player_free(&a->player);  // (which records the last estimate)
+    if (a->persist && a->player.bandwidth > 0) save_bandwidth(a, a->player.bandwidth);
     gs_mix_close();
     gs_jobs_free(a->jobs);
     gs_images_free(a->images);

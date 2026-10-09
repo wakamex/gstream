@@ -14,13 +14,14 @@ typedef struct {
     SDL_Mutex *lock;
     player_state state;
     char login[64], name[128];
-    char quality[64];       // asked for: "best", "audio_only", "720p60"...
-    char playing[64];       // the rendition playing, such as "1080p60"
+    char quality[64];       // asked for: "auto" (adaptive), "best", "audio_only", "720p60"...
+    char playing[64];       // the rendition playing, such as "1080p60" (the first one, when adaptive)
     char message[200];      // why it failed, for the viewer
     twitch_error error;
     char qualities[16][32]; // the channel's renditions, best first, audio_only last
     int quality_count;
     bool video, ad;         // video wanted; an ad is playing (from the playlist's markers)
+    double bandwidth;       // the last throughput estimate (bits a second, 0 when none), where adaptive play starts
     int generation;         // bumped by each start and stop, so a late resolve is dropped
     gs_live *live;
     void *live_user;        // gs_live's hooks' context, freed after it stops

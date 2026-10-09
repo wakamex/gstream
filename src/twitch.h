@@ -78,6 +78,7 @@ void twitch_thumbnail_url(const char *template_url, int width, int height, char 
 
 typedef struct {
     char url[2048];        // the chosen rendition's media playlist
+    char master[4096];     // the master playlist with every rendition, for adaptive play; "" when too long to keep
     char quality[64];      // its name, such as "1080p60" or "audio_only"
     long long expires_at;  // Unix time the playback token runs out; 0 when unknown
     gs_hls_variant variants[16];

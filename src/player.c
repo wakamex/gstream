@@ -9,7 +9,7 @@ void player_init(player *p, SDL_Renderer *r, void (*wake)(void)) {
     memset(p, 0, sizeof *p);
     p->lock = SDL_CreateMutex();
     p->renderer = r, p->wake = wake, p->volume = 0.8f;
-    SDL_strlcpy(p->quality, "best", sizeof p->quality);
+    SDL_strlcpy(p->quality, "auto", sizeof p->quality);
     gs_mix_set_volume(p->volume);
 }
 
@@ -21,12 +21,16 @@ void player_free(player *p) {
 // gs_live's hooks, on its threads.
 typedef struct { player *p; int generation; char login[64], quality[64]; } live_user;
 
+static bool is_auto(const char *quality) { return !SDL_strcasecmp(quality, "auto"); }
+
+// A fresh playlist URL of the kind playing: the master playlist when adaptive.
 static bool renew(void *user, char *url, size_t size) {
     live_user *u = user;
     twitch_playback pb = { 0 };
     char msg[200];
-    if (twitch_resolve(u->login, u->quality, false, &pb, msg, sizeof msg) != TW_OK) return false;
-    SDL_strlcpy(url, pb.url, size);
+    bool adaptive = is_auto(u->quality);
+    if (twitch_resolve(u->login, adaptive ? "best" : u->quality, false, &pb, msg, sizeof msg) != TW_OK) return false;
+    SDL_strlcpy(url, adaptive && pb.master[0] ? pb.master : pb.url, size);
     return true;
 }
 
@@ -71,7 +75,9 @@ static void resolve(void *user) {
     player *p = j->p;
     twitch_playback pb = { 0 };
     char msg[200];
-    twitch_error e = twitch_resolve(j->login, j->quality, false, &pb, msg, sizeof msg);
+    bool adaptive = is_auto(j->quality) && j->video;
+    twitch_error e = twitch_resolve(j->login, adaptive ? "best" : j->quality, false, &pb, msg, sizeof msg);
+    adaptive = adaptive && pb.master[0];
     bool audio_only = !SDL_strcmp(pb.quality, "audio_only");
     gs_live *live = NULL;
     live_user *u = e == TW_OK ? malloc(sizeof *u) : NULL;
@@ -80,8 +86,8 @@ static void resolve(void *user) {
         *u = (live_user){ p, j->generation, "", "" };
         SDL_strlcpy(u->login, j->login, sizeof u->login), SDL_strlcpy(u->quality, j->quality, sizeof u->quality);
         static const char *const headers[] = { "Referer: https://player.twitch.tv", "Origin: https://player.twitch.tv", NULL };
-        gs_live_config c = { .url = pb.url, .agent = "Mozilla/5.0", .headers = headers, .video = j->video && !audio_only, .renderer = p->renderer,
-                             .renew = renew, .segment = segment, .changed = changed, .user = u };
+        gs_live_config c = { .url = adaptive ? pb.master : pb.url, .agent = "Mozilla/5.0", .headers = headers, .video = j->video && !audio_only,
+                             .renderer = p->renderer, .start_bandwidth = p->bandwidth, .renew = renew, .segment = segment, .changed = changed, .user = u };
         live = gs_live_start(&c);
         if (!live) e = TW_UNKNOWN, SDL_strlcpy(msg, "the player could not start", sizeof msg);
     }
@@ -131,6 +137,8 @@ void player_start(player *p, gs_jobs *jobs, const char *login, const char *name,
 void player_stop(player *p) {
     SDL_LockMutex(p->lock);
     gs_live *live = p->live;
+    double measured = live ? gs_live_get_info(live).bandwidth : 0;
+    if (measured > 0) p->bandwidth = measured;  // (where the next channel starts)
     void *user = p->live_user;
     p->live = NULL, p->live_user = NULL, p->generation++, p->state = PLAYER_IDLE, p->ad = false;
     SDL_UnlockMutex(p->lock);
