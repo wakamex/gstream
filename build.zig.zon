@@ -1,6 +1,6 @@
 .{
     .name = .gstream,
-    .version = "0.1.0",
+    .version = "0.1.1",
     .fingerprint = 0x9256b2aa00bc230c,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
