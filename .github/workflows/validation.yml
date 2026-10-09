@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
           mkdir run
           tar -xzf dist/*-x86_64-linux.tar.gz -C run
-          exe=$(echo run/*/streamit)
+          exe=$(echo run/*/gstream)
           "$exe" --help | grep -q -- --sign-in
           "$exe" --data "$RUNNER_TEMP/data" --demo --shot "$RUNNER_TEMP/shot.png" --at 1
           file "$RUNNER_TEMP/shot.png" | grep -q 'PNG image data'
@@ -61,10 +61,10 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Expand-Archive -Path (Get-Item dist\*.zip) -DestinationPath run
-          $exe = (Get-Item run\*\streamit.exe).FullName
+          $exe = (Get-Item run\*\gstream.exe).FullName
           $shot = Join-Path $env:RUNNER_TEMP 'shot.png'
           $p = Start-Process -FilePath $exe -Wait -PassThru -ArgumentList @('--data', (Join-Path $env:RUNNER_TEMP 'data'), '--demo', '--shot', $shot, '--at', '1')
-          if ($p.ExitCode -ne 0) { throw "streamit.exe exited with $($p.ExitCode)" }
+          if ($p.ExitCode -ne 0) { throw "gstream.exe exited with $($p.ExitCode)" }
           if ((Get-Item $shot).Length -eq 0) { throw 'no frame rendered' }
 
   validate:

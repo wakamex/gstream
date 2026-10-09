@@ -21,7 +21,7 @@ static void draw_sign_in(app *a, gs_rect win) {
     gs_ui_fill(ui, card, st->panel);
     gs_ui_frame(ui, card, st->border);
     gs_rect c = gs_inset(card, 28);
-    gs_ui_text(ui, gs_cut_top(&c, 40), "streamit", 28, st->accent, 0);
+    gs_ui_text(ui, gs_cut_top(&c, 40), "gstream", 28, st->accent, 0);
     gs_ui_text(ui, gs_cut_top(&c, 26), "Watch the Twitch channels you follow", st->text_px, st->muted, 0);
     gs_cut_top(&c, 24);
     SDL_LockMutex(a->lock);
@@ -42,13 +42,13 @@ static void draw_sign_in(app *a, gs_rect win) {
     } else {
         gs_rect button = gs_cut_top(&c, st->row + 6);
         button = (gs_rect){ button.x + 60, button.y, button.w - 120, button.h };
-        bool ready = STREAMIT_CLIENT_ID[0] != 0 && !busy;
+        bool ready = GSTREAM_CLIENT_ID[0] != 0 && !busy;
         gs_ui_fill(ui, button, ready && gs_ui_hovered(ui, button) ? alpha(st->accent, 0.85f) : ready ? st->accent : st->raised);
         gs_ui_text(ui, button, busy ? "Starting\xE2\x80\xA6" : "Sign in with Twitch", st->text_px, ready ? st->accent_text : st->muted, 0);
         if (ready && (gs_ui_clicked(ui, button) || gs_ui_key(ui, SDLK_RETURN, 0))) sign_in_start(a);
     }
     gs_cut_top(&c, 14);
-    const char *note = !STREAMIT_CLIENT_ID[0] ? "This build has no Twitch Client ID (TWITCH_CLIENT_ID in .env when building)." : message;
+    const char *note = !GSTREAM_CLIENT_ID[0] ? "This build has no Twitch Client ID (TWITCH_CLIENT_ID in .env when building)." : message;
     gs_ui_text(ui, gs_cut_top(&c, 20), note, st->small_px, st->muted, 0);
 }
 
@@ -95,7 +95,7 @@ static void draw_sidebar(app *a, gs_rect side) {
     live *l = &a->live;
     gs_ui_fill(ui, side, st->panel);
     gs_rect c = gs_inset(side, 14);
-    gs_ui_text(ui, gs_cut_top(&c, 34), "streamit", 22, st->text, -1);
+    gs_ui_text(ui, gs_cut_top(&c, 34), "gstream", 22, st->text, -1);
     gs_cut_top(&c, 6);
     if (gs_ui_field(ui, gs_cut_top(&c, st->row), "filter", l->filter, sizeof l->filter, "Search follows")) l->view_version = -1;
     gs_cut_top(&c, 8);
@@ -262,7 +262,7 @@ static void draw_main(app *a, gs_rect m) {
         SDL_snprintf(who, sizeof who, "Signed in as %s", a->demo ? "demo" : a->session.login);
         gs_ui_menu_item(ui, who, false);
         if (gs_ui_menu_item(ui, a->show_stats ? "Hide diagnostics (F1)" : "Diagnostics (F1)", true)) a->show_stats = !a->show_stats;
-        if (gs_ui_menu_item(ui, "About streamit", true)) a->about = true;
+        if (gs_ui_menu_item(ui, "About gstream", true)) a->about = true;
         if (gs_ui_menu_item(ui, "Sign out", !a->demo)) sign_out(a);
         gs_ui_menu_end(ui);
     }
@@ -275,7 +275,7 @@ static void draw_theater(app *a, gs_rect win) {
     if (gs_ui_key(a->ui, SDLK_ESCAPE, 0)) set_theater(a, false);
 }
 
-// What streamit is built from, with each part's licence.
+// What gstream is built from, with each part's licence.
 static void draw_about(app *a, gs_rect win) {
     gs_ui *ui = a->ui;
     const gs_ui_style *st = gs_ui_style_of(ui);
@@ -284,7 +284,7 @@ static void draw_about(app *a, gs_rect win) {
     gs_ui_frame(ui, card, st->border);
     gs_rect c = gs_inset(card, 24);
     char line[200];
-    gs_ui_text(ui, gs_cut_top(&c, 36), "streamit " STREAMIT_VERSION, 24, st->text, -1);
+    gs_ui_text(ui, gs_cut_top(&c, 36), "gstream " GSTREAM_VERSION, 24, st->text, -1);
     gs_ui_text(ui, gs_cut_top(&c, 22), "Watch the Twitch channels you follow. Not made or endorsed by Twitch.", st->small_px, st->muted, -1);
     gs_cut_top(&c, 12);
     int sdl = SDL_GetVersion();

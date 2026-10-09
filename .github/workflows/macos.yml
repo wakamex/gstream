@@ -1,6 +1,6 @@
 name: macos
 
-# Builds streamit on Apple-silicon macOS and renders a frame headless. Not a release gate: streamit
+# Builds gstream on Apple-silicon macOS and renders a frame headless. Not a release gate: gstream
 # publishes no macOS build yet.
 on:
   push:
@@ -31,8 +31,8 @@ jobs:
       - name: Start it and render a frame
         run: |
           set -euo pipefail
-          zig-out/bin/streamit --help | grep -q -- --sign-in
-          zig-out/bin/streamit --data "$RUNNER_TEMP/data" --demo --shot "$RUNNER_TEMP/shot.png" --at 1
+          zig-out/bin/gstream --help | grep -q -- --sign-in
+          zig-out/bin/gstream --data "$RUNNER_TEMP/data" --demo --shot "$RUNNER_TEMP/shot.png" --at 1
           file "$RUNNER_TEMP/shot.png" | grep -q 'PNG image data'
       - name: Keep the frame
         if: always()

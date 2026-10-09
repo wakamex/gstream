@@ -1,18 +1,18 @@
 # Releases
 
-streamit is released as prebuilt archives on GitHub Releases, built and published by `.github/workflows/publish.yml` from a `v*` tag. The version source is `.version` in `build.zig.zon`.
+gstream is released as prebuilt archives on GitHub Releases, built and published by `.github/workflows/publish.yml` from a `v*` tag. The version source is `.version` in `build.zig.zon`.
 
 ## Assets
 
 | Asset | Zig target | File |
 |---|---|---|
-| Linux x86-64, glibc 2.27 or newer | `x86_64-linux-gnu.2.27` | `streamit-vX.Y.Z-x86_64-linux.tar.gz` |
-| Windows x86-64 | `x86_64-windows-gnu` | `streamit-vX.Y.Z-x86_64-windows.zip` |
-| FFmpeg's source and build files | none | `streamit-vX.Y.Z-ffmpeg-source.tar.gz` |
+| Linux x86-64, glibc 2.27 or newer | `x86_64-linux-gnu.2.27` | `gstream-vX.Y.Z-x86_64-linux.tar.gz` |
+| Windows x86-64 | `x86_64-windows-gnu` | `gstream-vX.Y.Z-x86_64-windows.zip` |
+| FFmpeg's source and build files | none | `gstream-vX.Y.Z-ffmpeg-source.tar.gz` |
 
 Both binaries are built on Linux with Zig 0.16.0. gesso is pinned by commit in `build.zig.zon`; to build against a local gesso checkout while changing both, use `zig build --fork=../gesso`. The Linux floor is glibc 2.27 (Ubuntu 18.04); gesso supplies the one newer glibc function SDL links. To check the floor, run the Linux archive in `docker.io/library/ubuntu:18.04` with `--demo --shot`. macOS is built and tested by `.github/workflows/macos.yml` but not released.
 
-Each archive holds the executable, `README.md`, `LICENSE`, and a `licenses/` folder with the license texts of everything compiled in: gesso (MIT), stb, kb_text_shape (zlib), Opus (BSD-3-Clause), FFmpeg (GNU Lesser General Public License (LGPL) 2.1 or later), SDL3 with its REUSE license set, and on Linux SDL's Wayland protocol code and the VA-API headers. FFmpeg is linked statically, so every release also attaches FFmpeg's unmodified release tarball and the files gesso builds it with, which together let a user relink streamit with a modified FFmpeg. `release/stage.sh` builds one asset:
+Each archive holds the executable, `README.md`, `LICENSE`, and a `licenses/` folder with the license texts of everything compiled in: gesso (MIT), stb, kb_text_shape (zlib), Opus (BSD-3-Clause), FFmpeg (GNU Lesser General Public License (LGPL) 2.1 or later), SDL3 with its REUSE license set, and on Linux SDL's Wayland protocol code and the VA-API headers. FFmpeg is linked statically, so every release also attaches FFmpeg's unmodified release tarball and the files gesso builds it with, which together let a user relink gstream with a modified FFmpeg. `release/stage.sh` builds one asset:
 
 ```sh
 release/stage.sh linux dist
@@ -38,9 +38,9 @@ The Twitch application's Client ID is compiled in. `stage.sh` takes it from `TWI
 The attestations are signed by the shared workflow, so verify a downloaded asset with:
 
 ```sh
-gh attestation verify ASSET --repo wakamex/streamit \
+gh attestation verify ASSET --repo wakamex/gstream \
   --signer-workflow wakamex/release-actions/.github/workflows/binary-release.yml
-gh release verify-asset vX.Y.Z ASSET --repo wakamex/streamit
+gh release verify-asset vX.Y.Z ASSET --repo wakamex/gstream
 ```
 
 ## One-time setup

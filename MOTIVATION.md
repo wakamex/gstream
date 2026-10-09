@@ -2,7 +2,7 @@
 
 ## Summary
 
-streamit is a standalone desktop application for watching Twitch on Linux, Windows and macOS. It embeds no browser engine and does three things: signs in to Twitch, shows which followed channels are live, and plays a stream inside its own window. It owns only the part of Twitch's API it needs, and it is written in C on [gesso](https://github.com/wakamex/gesso), a small library on [Simple DirectMedia Layer (SDL) 3](https://www.libsdl.org/), so that it installs in a few megabytes and runs in tens of megabytes of memory.
+gstream is a standalone desktop application for watching Twitch on Linux, Windows and macOS. It embeds no browser engine and does three things: signs in to Twitch, shows which followed channels are live, and plays a stream inside its own window. It owns only the part of Twitch's API it needs, and it is written in C on [gesso](https://github.com/wakamex/gesso), a small library on [Simple DirectMedia Layer (SDL) 3](https://www.libsdl.org/), so that it installs in a few megabytes and runs in tens of megabytes of memory.
 
 ## The problem
 
@@ -19,11 +19,11 @@ There is room for an actively maintained, native, browser-free desktop Twitch cl
 
 ### Native, cross-platform, one codebase
 
-streamit runs as a real desktop application on Linux, Windows and macOS: low resource use, fast start-up, and no dependence on a browser's quirks. No platform is an afterthought; every module it uses works on all three.
+gstream runs as a real desktop application on Linux, Windows and macOS: low resource use, fast start-up, and no dependence on a browser's quirks. No platform is an afterthought; every module it uses works on all three.
 
 ### No embedded browser engine
 
-streamit does not ship Chromium, Electron, a WebView2 or WKWebView surface, or any other browser engine. The reasons are the ones that make the browser experience bad:
+gstream does not ship Chromium, Electron, a WebView2 or WKWebView surface, or any other browser engine. The reasons are the ones that make the browser experience bad:
 
 - A bundled browser engine is tens to hundreds of megabytes, and a large runtime, for an app whose job is to show one video and a list.
 - Running Twitch's web stack brings its resource use, its digital rights management fragility and its extension breakage along with it.
@@ -31,21 +31,21 @@ streamit does not ship Chromium, Electron, a WebView2 or WKWebView surface, or a
 
 ### Small, measured, and owned
 
-streamit draws its own interface with gesso and decodes video with a trimmed build of [FFmpeg](https://ffmpeg.org/)'s libavcodec, using each system's hardware decoder where there is one. Everything is compiled into one executable. Size and memory are measured on every milestone, with the targets in the plan.
+gstream draws its own interface with gesso and decodes video with a trimmed build of [FFmpeg](https://ffmpeg.org/)'s libavcodec, using each system's hardware decoder where there is one. Everything is compiled into one executable. Size and memory are measured on every milestone, with the targets in the plan.
 
 ### Own the playback resolver
 
-Watching Twitch means resolving a playable stream: requesting a playback access token, building the Usher HLS request, choosing a rendition and classifying failures. streamit does this itself, in process, so there is no separate resolver to install. This makes streamit responsible for keeping up when Twitch changes its playback flow, in return for one app with nothing else to set up.
+Watching Twitch means resolving a playable stream: requesting a playback access token, building the Usher HLS request, choosing a rendition and classifying failures. gstream does this itself, in process, so there is no separate resolver to install. This makes gstream responsible for keeping up when Twitch changes its playback flow, in return for one app with nothing else to set up.
 
 ### Own only the Twitch API surface it needs
 
-streamit uses the official Twitch Helix API for sign-in, followed live channels and channel metadata, and the public web playback flow to obtain stream URLs. Anything beyond watching stays out of the first release.
+gstream uses the official Twitch Helix API for sign-in, followed live channels and channel metadata, and the public web playback flow to obtain stream URLs. Anything beyond watching stays out of the first release.
 
 ## Core capabilities
 
 ### Sign-in
 
-OAuth against Twitch through the device-code flow, as a public desktop client: the user authorizes in their own browser, so streamit needs no embedded web view and ships no client secret. The access and refresh tokens are kept for the current user: encrypted with the Windows Data Protection API on Windows, and in a file only the user can read on Linux and macOS.
+OAuth against Twitch through the device-code flow, as a public desktop client: the user authorizes in their own browser, so gstream needs no embedded web view and ships no client secret. The access and refresh tokens are kept for the current user: encrypted with the Windows Data Protection API on Windows, and in a file only the user can read on Linux and macOS.
 
 ### Followed channels live now
 
@@ -53,7 +53,7 @@ The list prior tools lack: which followed channels are live right now, with titl
 
 ### Stream playback in the window
 
-The chosen stream plays inside the window with streamit's own controls. streamit reads Twitch's HLS playlists and segments itself and decodes them with libavcodec, in hardware where the system allows. A stream is resolved only when the user picks a channel, while the cheap Helix poll keeps the list current.
+The chosen stream plays inside the window with gstream's own controls. gstream reads Twitch's HLS playlists and segments itself and decodes them with libavcodec, in hardware where the system allows. A stream is resolved only when the user picks a channel, while the cheap Helix poll keeps the list current.
 
 ## Non-goals
 

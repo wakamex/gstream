@@ -1,4 +1,4 @@
-// streamit: a native Twitch client on gesso. Sign in, see which channels you follow are live, watch.
+// gstream: a native Twitch client on gesso. Sign in, see which channels you follow are live, watch.
 // Its options are in `usage` below. In the list: / or Ctrl+F searches, Up/Down/Page Up/Page Down/
 // Home/End move, Enter or a click watches; F1 shows the performance overlay; F11 or Alt+Enter is
 // full screen. The window draws only when something changes.
@@ -14,7 +14,7 @@
 #include "stb_image_write.h"
 
 static const char usage[] =
-    "streamit                                  sign in and watch the channels you follow\n"
+    "gstream                                   sign in and watch the channels you follow\n"
     "  --sign-in                               sign in here in the terminal, then quit\n"
     "  --sign-out                              forget the saved session\n"
     "  --api live                              print the followed channels that are live\n"
@@ -56,10 +56,10 @@ static Uint32 SDLCALL wake_later(void *user, SDL_TimerID id, Uint32 interval) {
 
 // --sign-in: the device code flow in the terminal.
 static bool sign_in_here(const char *dir) {
-    gs_oauth_client c = twitch_oauth_client(STREAMIT_CLIENT_ID);
+    gs_oauth_client c = twitch_oauth_client(GSTREAM_CLIENT_ID);
     gs_oauth_device d = { 0 };
     char msg[256];
-    if (!STREAMIT_CLIENT_ID[0]) return printf("no Twitch Client ID was built in (TWITCH_CLIENT_ID in .env)\n"), false;
+    if (!GSTREAM_CLIENT_ID[0]) return printf("no Twitch Client ID was built in (TWITCH_CLIENT_ID in .env)\n"), false;
     if (gs_oauth_start(&c, &d, msg, sizeof msg) != GS_OAUTH_OK) return printf("could not start: %s\n", msg), false;
     printf("Open %s and enter the code %s\n", d.verification_uri, d.user_code);
     fflush(stdout);
@@ -73,7 +73,7 @@ static bool sign_in_here(const char *dir) {
             return printf("not signed in: %s\n", msg), false;
     }
     twitch_session s;
-    twitch_error e = twitch_session_from(STREAMIT_CLIENT_ID, &t, &s, msg, sizeof msg);
+    twitch_error e = twitch_session_from(GSTREAM_CLIENT_ID, &t, &s, msg, sizeof msg);
     SDL_memset(&t, 0, sizeof t);
     if (e != TW_OK || !twitch_session_save(dir, &s)) return printf("not signed in: %s\n", e != TW_OK ? msg : "the session could not be saved"), false;
     printf("signed in as %s\n", s.login);
@@ -83,7 +83,7 @@ static bool sign_in_here(const char *dir) {
 // The window's sign-in, on a worker: a code, then polling until the user approves or it runs out.
 static void sign_in_job(void *user) {
     app *a = user;
-    gs_oauth_client c = twitch_oauth_client(STREAMIT_CLIENT_ID);
+    gs_oauth_client c = twitch_oauth_client(GSTREAM_CLIENT_ID);
     gs_oauth_device d = { 0 };
     char msg[200];
     gs_oauth_result r = gs_oauth_start(&c, &d, msg, sizeof msg);
@@ -113,7 +113,7 @@ static void sign_in_job(void *user) {
         }
     }
     twitch_session s;
-    twitch_error e = twitch_session_from(STREAMIT_CLIENT_ID, &t, &s, msg, sizeof msg);
+    twitch_error e = twitch_session_from(GSTREAM_CLIENT_ID, &t, &s, msg, sizeof msg);
     SDL_memset(&t, 0, sizeof t);
     SDL_LockMutex(a->lock);
     if (e == TW_OK && twitch_session_save(a->dir, &s)) a->session = s, a->auth = SIGNED_IN, a->auth_message[0] = 0;
@@ -162,8 +162,8 @@ static void restore_job(void *user) {
     s = a->session;
     SDL_UnlockMutex(a->lock);
     char msg[200];
-    twitch_error e = twitch_validate(STREAMIT_CLIENT_ID, &s, msg, sizeof msg);
-    if (e == TW_LOGIN_REQUIRED) e = twitch_refresh(STREAMIT_CLIENT_ID, &s, msg, sizeof msg), e = e == TW_OK ? twitch_validate(STREAMIT_CLIENT_ID, &s, msg, sizeof msg) : e;
+    twitch_error e = twitch_validate(GSTREAM_CLIENT_ID, &s, msg, sizeof msg);
+    if (e == TW_LOGIN_REQUIRED) e = twitch_refresh(GSTREAM_CLIENT_ID, &s, msg, sizeof msg), e = e == TW_OK ? twitch_validate(GSTREAM_CLIENT_ID, &s, msg, sizeof msg) : e;
     SDL_LockMutex(a->lock);
     if (e == TW_OK) a->session = s, twitch_session_save(a->dir, &s);
     else if (e == TW_LOGIN_REQUIRED) a->auth = SIGNED_OUT, SDL_strlcpy(a->auth_message, "Your session ended; sign in again.", sizeof a->auth_message), twitch_session_erase(a->dir);
@@ -189,12 +189,12 @@ static bool api(const char *dir, const char *kind, const char *arg, const char *
     }
     if (!strcmp(kind, "live")) {
         twitch_session s;
-        if (!twitch_session_load(dir, &s)) return printf("not signed in (streamit --sign-in)\n"), false;
+        if (!twitch_session_load(dir, &s)) return printf("not signed in (gstream --sign-in)\n"), false;
         static twitch_stream streams[LIVE_MAX];
         int n;
         char before[sizeof s.access];
         SDL_strlcpy(before, s.access, sizeof before);
-        twitch_error e = twitch_followed_live(STREAMIT_CLIENT_ID, &s, streams, LIVE_MAX, &n, msg, sizeof msg);
+        twitch_error e = twitch_followed_live(GSTREAM_CLIENT_ID, &s, streams, LIVE_MAX, &n, msg, sizeof msg);
         if (strcmp(before, s.access)) twitch_session_save(dir, &s);  // renewed on the way
         if (e != TW_OK) return printf("%s: %s\n", twitch_error_text(e), msg), false;
         for (int i = 0; i < n; i++) printf("%7d  %-20s %-28.28s %s\n", streams[i].viewers, streams[i].login, streams[i].category, streams[i].title);
@@ -216,7 +216,7 @@ static void data_dir(const char *data, char *out, size_t size) {
         SDL_CreateDirectory(data);
         return;
     }
-    char *pref = SDL_GetPrefPath("wakamex", "streamit");  // (made if missing)
+    char *pref = SDL_GetPrefPath("wakamex", "gstream");  // (made if missing)
     snprintf(out, size, "%s", pref ? pref : "");
     SDL_free(pref);
 }
@@ -267,7 +267,7 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     window_path(a, wpath, sizeof wpath);
     if (a->persist) gs_window_state_load(wpath, &a->window);
     SDL_PropertiesID p = SDL_CreateProperties();
-    SDL_SetStringProperty(p, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "streamit");
+    SDL_SetStringProperty(p, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "gstream");
     SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, a->window.w);
     SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, a->window.h);
     SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
@@ -353,7 +353,7 @@ static void schedule(app *a) {
 SDL_AppResult SDL_AppIterate(void *state) {
     app *a = state;
     gs_stats_frame_begin(&a->stats);
-    if (a->auth == SIGNED_IN && a->session.access[0]) live_poll(&a->live, a->jobs, STREAMIT_CLIENT_ID, &a->session, a->lock, a->dir, wake);
+    if (a->auth == SIGNED_IN && a->session.access[0]) live_poll(&a->live, a->jobs, GSTREAM_CLIENT_ID, &a->session, a->lock, a->dir, wake);
     views_draw(a);
     gs_ui_end(a->ui);
     gs_images_end_frame(a->images);

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Builds one release asset.
 #   release/stage.sh linux|windows|sources OUT_DIR
-# linux and windows build streamit for that target and pack it with the license texts of everything
-# compiled into it: OUT_DIR/streamit-vVERSION-x86_64-linux.tar.gz or -x86_64-windows.zip. sources
+# linux and windows build gstream for that target and pack it with the license texts of everything
+# compiled into it: OUT_DIR/gstream-vVERSION-x86_64-linux.tar.gz or -x86_64-windows.zip. sources
 # packs what the LGPL asks to accompany the binaries: FFmpeg's release tarball and the files gesso
-# builds it with, as OUT_DIR/streamit-vVERSION-ffmpeg-source.tar.gz. VERSION is build.zig.zon's
+# builds it with, as OUT_DIR/gstream-vVERSION-ffmpeg-source.tar.gz. VERSION is build.zig.zon's
 # .version. Run from a clean checkout; zig 0.16 fetches the dependencies into zig-pkg/. The Twitch
 # Client ID comes from TWITCH_CLIENT_ID in the environment, or else from .env (see build.zig).
 set -euo pipefail
@@ -34,14 +34,14 @@ trap 'rm -rf "$work"' EXIT
 gesso=$(package build.zig.zon gesso)
 
 if [ "$target" = sources ]; then
-    name=streamit-v$version-ffmpeg-source
+    name=gstream-v$version-ffmpeg-source
     stage=$work/$name
     mkdir -p "$stage/gesso"
     curl -sSfL -o "$stage/ffmpeg-$ffmpeg_version.tar.xz" "https://ffmpeg.org/releases/ffmpeg-$ffmpeg_version.tar.xz"
     echo "$ffmpeg_sha256  $stage/ffmpeg-$ffmpeg_version.tar.xz" | sha256sum -c --quiet
     cp -r "$gesso/ffmpeg" "$gesso/build.zig" "$gesso/build.zig.zon" "$gesso/LICENSE" "$stage/gesso/"
     cat > "$stage/README.txt" <<EOF
-streamit $version links FFmpeg $ffmpeg_version's libavcodec and libavutil statically, under the
+gstream $version links FFmpeg $ffmpeg_version's libavcodec and libavutil statically, under the
 GNU Lesser General Public License version 2.1 or later (COPYING.LGPLv2.1 in the tarball).
 
 ffmpeg-$ffmpeg_version.tar.xz is FFmpeg's unmodified release tarball.
@@ -49,7 +49,7 @@ gesso/ holds the files gesso builds it with: build.zig (see addFfmpeg) compiles 
 in gesso/ffmpeg/<target>/sources.txt with the configure output beside them, which
 gesso/ffmpeg/tools/import.sh generated.
 
-To relink streamit with a modified FFmpeg, check out streamit and gesso at this release, change the
+To relink gstream with a modified FFmpeg, check out gstream and gesso at this release, change the
 FFmpeg dependency in gesso's build.zig.zon to your copy, and run zig build.
 EOF
     tar -czf "$out/$name.tar.gz" -C "$work" "$name"
@@ -58,11 +58,11 @@ EOF
 fi
 
 case $target in
-    linux) zig_target=x86_64-linux-gnu.2.27 exe=streamit ext=tar.gz ;;
-    windows) zig_target=x86_64-windows-gnu exe=streamit.exe ext=zip ;;
+    linux) zig_target=x86_64-linux-gnu.2.27 exe=gstream ext=tar.gz ;;
+    windows) zig_target=x86_64-windows-gnu exe=gstream.exe ext=zip ;;
     *) echo "unknown target: $target" >&2; exit 1 ;;
 esac
-name=streamit-v$version-x86_64-$target
+name=gstream-v$version-x86_64-$target
 zig build --release=fast -Dtarget="$zig_target" -p "$work/prefix" ${TWITCH_CLIENT_ID:+-Dclient-id="$TWITCH_CLIENT_ID"}
 
 stage=$work/$name

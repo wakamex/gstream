@@ -1,4 +1,4 @@
-// streamit's tests: one executable (zig build test).
+// gstream's tests: one executable (zig build test).
 #pragma once
 #include <stdio.h>
 

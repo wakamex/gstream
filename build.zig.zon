@@ -1,7 +1,7 @@
 .{
-    .name = .streamit,
+    .name = .gstream,
     .version = "0.0.0",
-    .fingerprint = 0x6820440b38426552,
+    .fingerprint = 0x9256b2aa00bc230c,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .gesso = .{

@@ -1,14 +1,14 @@
-# streamit
+# gstream
 
 A small desktop app for watching Twitch. Sign in once, see which of the channels you follow are live, and watch one in the window. It is one executable for Linux and Windows, written in C on [gesso](https://github.com/wakamex/gesso), and embeds no browser.
 
-streamit is not made or endorsed by Twitch.
+gstream is not made or endorsed by Twitch.
 
 ## Size and memory
 
-Measured on Windows 11 (Ryzen 7 3800XT, RTX 3080) against the Qt and libmpv build streamit replaced. CPU is the share of one core; memory is the private working set.
+Measured on Windows 11 (Ryzen 7 3800XT, RTX 3080) against the Qt and libmpv build gstream replaced. CPU is the share of one core; memory is the private working set.
 
-| Measure | Qt build | streamit |
+| Measure | Qt build | gstream |
 |---|---|---|
 | Download | 195 MB folder | 2.5 MB zip, one 6.3 MB executable |
 | Browsing the list, idle | not measured | 22 MB, 0.4% CPU |
@@ -17,7 +17,7 @@ Measured on Windows 11 (Ryzen 7 3800XT, RTX 3080) against the Qt and libmpv buil
 
 ## Using it
 
-Download the archive for your system from the Releases page, unpack it and run `streamit` (`streamit.exe` on Windows). Click "Sign in with Twitch", enter the code it shows on Twitch's page, and the list of live channels you follow appears. Click one to watch it.
+Download the archive for your system from the Releases page, unpack it and run `gstream` (`gstream.exe` on Windows). Click "Sign in with Twitch", enter the code it shows on Twitch's page, and the list of live channels you follow appears. Click one to watch it.
 
 Keys:
 
@@ -28,13 +28,13 @@ Keys:
 
 The player bar's quality menu picks a rendition, down to audio only. Video is decoded by the graphics card where the system offers it ([Video Acceleration API (VA-API)](https://github.com/intel/libva) on Linux, Direct3D 11 on Windows) and in software otherwise; `--software` forces software decoding.
 
-`streamit --help` lists the command-line options, such as `--play CHANNEL` to start watching a channel straight away and `--sign-in` to sign in from a terminal.
+`gstream --help` lists the command-line options, such as `--play CHANNEL` to start watching a channel straight away and `--sign-in` to sign in from a terminal.
 
 The saved session is encrypted for your Windows user with the [Data Protection API (DPAPI)](https://learn.microsoft.com/en-us/windows/win32/seccng/cng-dpapi) on Windows, and is a file readable only by your user on Linux.
 
 ## Building
 
-streamit builds with [Zig](https://ziglang.org/) 0.16.0, which fetches every dependency:
+gstream builds with [Zig](https://ziglang.org/) 0.16.0, which fetches every dependency:
 
 ```sh
 zig build --release=fast
@@ -45,4 +45,4 @@ Signing in needs a Twitch application's Client ID, given with `-Dclient-id=...` 
 
 ## License
 
-streamit is MIT licensed (`LICENSE`). The executable also contains [FFmpeg](https://ffmpeg.org/)'s libavcodec and libavutil under the GNU Lesser General Public License 2.1 or later, and gesso, [Simple DirectMedia Layer (SDL)](https://www.libsdl.org/), [stb](https://github.com/nothings/stb), [kb_text_shape](https://github.com/JimmyLefevre/kb) and [Opus](https://opus-codec.org/) under their own licenses; each release archive holds their texts in `licenses/`. Every release attaches FFmpeg's source and the files gesso builds it with.
+gstream is MIT licensed (`LICENSE`). The executable also contains [FFmpeg](https://ffmpeg.org/)'s libavcodec and libavutil under the GNU Lesser General Public License 2.1 or later, and gesso, [Simple DirectMedia Layer (SDL)](https://www.libsdl.org/), [stb](https://github.com/nothings/stb), [kb_text_shape](https://github.com/JimmyLefevre/kb) and [Opus](https://opus-codec.org/) under their own licenses; each release archive holds their texts in `licenses/`. Every release attaches FFmpeg's source and the files gesso builds it with.
