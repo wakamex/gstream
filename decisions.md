@@ -204,11 +204,21 @@ hpbook's Wi-Fi fetched about 2.1 Mbit/s from Twitch's CDN at the time, so a 2 s 
 
 gesso's workflow passes on Ubuntu 24.04, Windows Server 2025 and macOS 15 (Apple silicon), each running the tests with and without the video modules, so `gs_video`'s VideoToolbox path and the macOS FFmpeg configuration now build and pass their tests on a Mac. Two fixes came out of the first runs: the interface test's offscreen window was never created on macOS (it now brings its own graphics context, as the apps' headless shots do), and NASM built on Windows crashed at random in Zig 0.16's `strnlen`, which reads past the string. gesso supplies its own `strnlen` to NASM and to its MinGW builds, which also covers SDL's calls in the Windows apps.
 
-### Adaptive quality (2026-10-08)
+### Adaptive quality (2026-10-08, revised 2026-10-09)
 
-Auto is the default quality. gesso's `gs_live` plays the channel's master playlist and `gs_abr` picks the rendition: the lower of a fast and a slow throughput average (half-lives 3 and 9 s), each download weighted by the longer of its time and its media's; the best rendition within 70% of it; down at once, up one step with two segments buffered and 15 s since the last switch (doubled after a step up that did not hold); a download given up for the rendition below when it would miss what is buffered. Downloads are timed from their first byte, since Twitch's first byte can take most of a second. The rules follow hls.js, Shaka and ExoPlayer, as the piracy session laid them out; the weighting differs from hls.js's (download time alone), which recovered from a slow spell in 24 s where this takes 3.
+Auto is the default quality. gesso's `gs_live` plays the channel's master playlist and `gs_abr` picks the rendition. The estimate is the harmonic mean of the last five downloads' throughput, timed from each download's first byte, as MPC and Puffer's classical baseline predict (`literature/README.md` lists the papers). The choice follows ExoPlayer's `AdaptiveTrackSelection`: the best rendition within 70% of the estimate, reached directly, down at once and up once 10 s are buffered, or on a live stream 75% of the time to the live edge less one segment. A download that would miss what is buffered is given up for the rendition below. The last estimate is kept in `bandwidth.txt` in the data folder.
 
-Tests use gesso's `tests/streams/ladder.sh` (540p, 360p and 180p sharing segment boundaries and timestamps) served by `tests/streams/live.py` through a link capped on a schedule. With 4 Mbit/s falling to 800 kbit/s and back, playback stepped down within a second of the drop and back up after 3 and 23 s, with no stall or dropped frame, in software and through VAAPI. On Twitch, a channel started at 480p and reached 1080p60 within 18 s through VAAPI on hpbook and Direct3D 11 on the Windows PC, again with no stall or dropped frame at the switches. The last estimate is kept in `bandwidth.txt` in the data folder, so the next start skips the climb.
+The first version used hls.js's two exponentially weighted averages and stepped up one rendition at a time with a 15 s wait; a fast link took 17 s to reach 1080p60 on Twitch. The papers mostly predict with a harmonic mean, and ExoPlayer, the player in Google's Android apps, moves straight to the rendition that fits. With both, the same start took 2 s.
+
+| Test | Two averages, one step at a time | Harmonic mean, ExoPlayer's rule |
+|---|---|---|
+| Live Twitch channel on hpbook, no remembered estimate: time to 1080p60 | 17 s | 2 s |
+| Throttled ladder, link from 4 Mbit/s to 800 kbit/s: first step down | under 1 s | under 1 s |
+| The same, down to 180p | 1 s | 5 s |
+| The same, link back to 4 Mbit/s: back to 540p | 23 s | 9 s |
+| Stalls | 0 | 0 |
+
+The ladder is gesso's `tests/streams/ladder.sh` (540p, 360p and 180p sharing segment boundaries and timestamps), served by `tests/streams/live.py` through a link capped on a schedule. Hardware decoding followed every switch through VAAPI on this host and hpbook and Direct3D 11 on the Windows PC.
 
 ### M7 again, on an idle desktop (2026-10-08)
 
