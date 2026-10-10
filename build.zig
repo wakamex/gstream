@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) void {
     const gesso = b.dependency("gesso", .{ .target = target, .optimize = optimize, .video = true }).artifact("gesso");
     const client_id = b.option([]const u8, "client-id", "Twitch application Client ID (default: gstream's)") orelse client_id_default;
 
-    const mod = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .strip = optimize != .Debug });
+    const mod = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .strip = optimize != .debug });
     mod.addCSourceFiles(.{ .root = b.path("src"), .files = &.{ "main.c", "views.c", "live.c", "player.c", "twitch.c" }, .flags = flags });
     mod.addCMacro("GSTREAM_VERSION", "\"" ++ zon.version ++ "\"");
     mod.addCMacro("GSTREAM_CLIENT_ID", b.fmt("\"{s}\"", .{client_id}));
@@ -29,7 +29,7 @@ pub fn build(b: *std.Build) void {
 
     const run = b.addRunArtifact(exe);
     run.step.dependOn(b.getInstallStep());
-    if (b.args) |args| run.addArgs(args);
+    run.addPassthruArgs();
     b.step("run", "Build and run gstream").dependOn(&run.step);
 
     const tests = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });

@@ -34,7 +34,7 @@ The saved session is encrypted for your Windows user with the [Data Protection A
 
 ## Building
 
-gstream builds with [Zig](https://ziglang.org/) 0.16.0, which fetches every dependency:
+gstream builds with [Zig](https://ziglang.org/) 0.17.0, which fetches every dependency:
 
 ```sh
 zig build --release=fast

@@ -2,11 +2,11 @@
     .name = .gstream,
     .version = "0.1.1",
     .fingerprint = 0x9256b2aa00bc230c,
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .gesso = .{
-            .url = "git+https://github.com/wakamex/gesso.git#b9fe676a41024d8e7c3c9dae63afaefdd7ee43e0",
-            .hash = "gesso-0.0.0-LFvUrwy4PgAdgypilpA8IdDoHI3LN6Vk2lIOL7dt7ZrB",
+            .url = "git+https://github.com/wakamex/gesso.git#b3e039d5706f18feb3fdaf7a74bdb42174ba6771",
+            .hash = "gesso-0.0.0-LFvUrzC0PgBl-6sTSRqxeuONqZCipRF4UJ6IXmtvlVKC",
         },
     },
     .paths = .{ "build.zig", "build.zig.zon", "src", "assets", "LICENSE", "README.md" },

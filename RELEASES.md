@@ -10,7 +10,7 @@ gstream is released as prebuilt archives on GitHub Releases, built and published
 | Windows x86-64 | `x86_64-windows-gnu` | `gstream-vX.Y.Z-x86_64-windows.zip` |
 | FFmpeg's source and build files | none | `gstream-vX.Y.Z-ffmpeg-source.tar.gz` |
 
-Both binaries are built on Linux with Zig 0.16.0. gesso is pinned by commit in `build.zig.zon`; to build against a local gesso checkout while changing both, use `zig build --fork=../gesso`. The Linux floor is glibc 2.27 (Ubuntu 18.04); gesso supplies the one newer glibc function SDL links. To check the floor, run the Linux archive in `docker.io/library/ubuntu:18.04` with `--demo --shot`. macOS is built and tested by `.github/workflows/macos.yml` but not released.
+Both binaries are built on Linux with Zig 0.17.0. gesso is pinned by commit in `build.zig.zon`; to build against a local gesso checkout while changing both, use `zig build --fork=../gesso`. The Linux floor is glibc 2.27 (Ubuntu 18.04); gesso supplies the one newer glibc function SDL links. To check the floor, run the Linux archive in `docker.io/library/ubuntu:18.04` with `--demo --shot`. macOS is built and tested by `.github/workflows/macos.yml` but not released.
 
 Each archive holds the executable, `README.md`, `LICENSE`, and a `licenses/` folder with the license texts of everything compiled in: gesso (MIT), stb, kb_text_shape (zlib), Opus (BSD-3-Clause), FFmpeg (GNU Lesser General Public License (LGPL) 2.1 or later), SDL3 with its REUSE license set, and on Linux SDL's Wayland protocol code and the VA-API headers. FFmpeg is linked statically, so every release also attaches FFmpeg's unmodified release tarball and the files gesso builds it with, which together let a user relink gstream with a modified FFmpeg. `release/stage.sh` builds one asset:
 
