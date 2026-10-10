@@ -32,6 +32,16 @@ The quality is chosen automatically by default: gstream measures how fast segmen
 
 The saved session is encrypted for your Windows user with the [Data Protection API (DPAPI)](https://learn.microsoft.com/en-us/windows/win32/seccng/cng-dpapi) on Windows, and is a file readable only by your user on Linux.
 
+## Verifying a download
+
+Each release file is signed by the shared release workflow in [wakamex/release-actions](https://github.com/wakamex/release-actions), so check it with the [GitHub CLI](https://cli.github.com/) and name that workflow; a plain `gh attestation verify` without it fails:
+
+```sh
+gh attestation verify gstream-vX.Y.Z-x86_64-windows.zip --repo wakamex/gstream \
+  --signer-workflow wakamex/release-actions/.github/workflows/binary-release.yml
+gh release verify-asset vX.Y.Z gstream-vX.Y.Z-x86_64-windows.zip --repo wakamex/gstream
+```
+
 ## Building
 
 gstream builds with [Zig](https://ziglang.org/) 0.17.0, which fetches every dependency:
