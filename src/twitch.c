@@ -174,33 +174,64 @@ static char *helix_get(const char *client_id, const twitch_session *s, const cha
     return body;
 }
 
-twitch_error twitch_followed_live(const char *client_id, twitch_session *s, twitch_stream *out, int max, int *count, char *message, size_t size) {
-    *count = 0;
-    char cursor[256] = "";
-    bool renewed = false;
-    for (int page = 0; page < 50; page++) {  // (50 pages of 100: far beyond anyone's live follows)
-        char url[600];
-        SDL_snprintf(url, sizeof url, "https://api.twitch.tv/helix/streams/followed?user_id=%s&first=100%s%s", s->user_id, cursor[0] ? "&after=" : "", cursor);
+// A Helix GET that renews the session once when Twitch says its token expired. On TW_OK *body holds
+// the answer (SDL_free it).
+static twitch_error helix(const char *client_id, twitch_session *s, const char *url, char **body, size_t *len, char *message, size_t size) {
+    for (int attempt = 0;; attempt++) {
         int status;
-        size_t len = 0;
-        char *body = helix_get(client_id, s, url, &status, &len);
-        if (status == 401 && !renewed) {  // the access token expired: renew once and ask again
-            SDL_free(body);
-            renewed = true;
+        *body = helix_get(client_id, s, url, &status, len);
+        if (status == 200) return TW_OK;
+        SDL_free(*body), *body = NULL;
+        if (status == 401 && !attempt) {
             twitch_error e = twitch_refresh(client_id, s, message, size);
             if (e != TW_OK) return e;
-            page--;
             continue;
         }
-        twitch_error e = !status || status >= 500 ? TW_NETWORK : status == 401 ? TW_LOGIN_REQUIRED : status == 429 ? TW_RATE_LIMITED : status != 200 ? TW_UNKNOWN : TW_OK;
-        int n = e == TW_OK ? twitch_parse_streams(body, len, out + *count, max - *count, cursor, sizeof cursor) : -1;
+        twitch_error e = !status || status >= 500 ? TW_NETWORK : status == 401 ? TW_LOGIN_REQUIRED : status == 429 ? TW_RATE_LIMITED : TW_UNKNOWN;
+        return say(message, size, twitch_error_text(e)), e;
+    }
+}
+
+// Every page of a Helix streams listing (`query` is the URL up to its paging parameters), up to max.
+static twitch_error stream_pages(const char *client_id, twitch_session *s, const char *query, twitch_stream *out, int max, int *count, char *message, size_t size) {
+    *count = 0;
+    char cursor[256] = "";
+    for (int page = 0; page < 50; page++) {  // (50 pages of 100: far beyond anyone's live follows)
+        char url[900], *body;
+        SDL_snprintf(url, sizeof url, "%s&first=100%s%s", query, cursor[0] ? "&after=" : "", cursor);
+        size_t len = 0;
+        twitch_error e = helix(client_id, s, url, &body, &len, message, size);
+        if (e != TW_OK) return e;
+        int n = twitch_parse_streams(body, len, out + *count, max - *count, cursor, sizeof cursor);
         SDL_free(body);
-        if (e == TW_OK && n < 0) e = TW_UNKNOWN;
-        if (e != TW_OK) return say(message, size, twitch_error_text(e)), e;
+        if (n < 0) return say(message, size, twitch_error_text(TW_UNKNOWN)), TW_UNKNOWN;
         *count += n < max - *count ? n : max - *count;
         if (!cursor[0] || *count >= max) break;
     }
     return TW_OK;
+}
+
+twitch_error twitch_followed_live(const char *client_id, twitch_session *s, twitch_stream *out, int max, int *count, char *message, size_t size) {
+    char query[200];
+    SDL_snprintf(query, sizeof query, "https://api.twitch.tv/helix/streams/followed?user_id=%s", s->user_id);
+    return stream_pages(client_id, s, query, out, max, count, message, size);
+}
+
+twitch_error twitch_category_live(const char *client_id, twitch_session *s, const char *category, twitch_stream *out, int max, int *count, char *message, size_t size) {
+    *count = 0;
+    char name[400], url[600], *body;
+    gs_oauth_encode(category, name, sizeof name);
+    SDL_snprintf(url, sizeof url, "https://api.twitch.tv/helix/games?name=%s", name);
+    size_t len = 0;
+    twitch_error e = helix(client_id, s, url, &body, &len, message, size);
+    if (e != TW_OK) return e;
+    gs_json *doc = gs_json_parse(body, len);
+    char id[32];
+    SDL_strlcpy(id, gs_json_str(gs_json_path(gs_json_root(doc), "data.0.id"), ""), sizeof id);
+    gs_json_free(doc), SDL_free(body);
+    if (!id[0]) return say(message, size, "Twitch has no category of that name"), TW_UNKNOWN;
+    SDL_snprintf(url, sizeof url, "https://api.twitch.tv/helix/streams?game_id=%s", id);
+    return stream_pages(client_id, s, url, out, max, count, message, size);
 }
 
 void twitch_thumbnail_url(const char *template_url, int width, int height, char *out, size_t size) {

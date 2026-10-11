@@ -30,6 +30,8 @@ The quality is chosen automatically by default: gstream measures how fast segmen
 
 `gstream --help` lists the command-line options, such as `--play CHANNEL` to start watching a channel straight away and `--sign-in` to sign in from a terminal.
 
+For scripts, `gstream --api category "Dota 2" --json` prints the live streams in a category, one JSON object a line with the login, viewers, title and start time (`--api live --json` does the same for followed channels). `--shot F.png` saves one frame headless and prints a JSON line with `frame_time`, the time the stream itself gives that frame, and `behind`, how many seconds before the capture that was.
+
 The saved session is encrypted for your Windows user with the [Data Protection API (DPAPI)](https://learn.microsoft.com/en-us/windows/win32/seccng/cng-dpapi) on Windows, and is a file readable only by your user on Linux.
 
 ## Verifying a download

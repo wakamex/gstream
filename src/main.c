@@ -18,6 +18,8 @@ static const char usage[] =
     "  --sign-in                               sign in here in the terminal, then quit\n"
     "  --sign-out                              forget the saved session\n"
     "  --api live                              print the followed channels that are live\n"
+    "  --api category NAME                     print the live streams in a category, such as \"Dota 2\"\n"
+    "  --json                                  print --api live and --api category as one JSON object a line\n"
     "  --api resolve CHANNEL [QUALITY]         print a channel's stream (QUALITY such as best, 720p60, audio_only)\n"
     "  --play CHANNEL                          start watching a channel\n"
     "  --quality Q, --audio-only               the rendition to play (auto, best, 720p60, audio_only...)\n"
@@ -26,7 +28,8 @@ static const char usage[] =
     "  --software                              decode video in software\n"
     "  --mute                                  start muted\n"
     "  --data DIR                              where the session and settings live\n"
-    "  --shot F.png [--at S]                   render one frame at S seconds, headless, and quit\n"
+    "  --shot F.png [--at S]                   render one frame at S seconds, headless, and quit; prints a\n"
+    "                                          JSON line with the time the stream gives that frame\n"
     "  --stats FILE [--quit S]                 add the performance overlay's text to FILE each second;\n"
     "                                          quit after S seconds\n";
 
@@ -172,7 +175,40 @@ static void restore_job(void *user) {
 }
 
 // --api: one answer from Twitch, printed.
-static bool api(const char *dir, const char *kind, const char *arg, const char *quality) {
+// A string as a JSON string, quotes included.
+static void print_json(const char *s) {
+    putchar('"');
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+        if (*p == '"' || *p == '\\') printf("\\%c", *p);
+        else if (*p < 0x20) printf("\\u%04x", *p);
+        else putchar(*p);
+    }
+    putchar('"');
+}
+
+// Unix seconds as UTC, such as 2026-10-08T17:26:03.620Z.
+static void utc_text(double t, char *out, size_t size) {
+    SDL_DateTime d;
+    SDL_TimeToDateTime((SDL_Time)(t * 1e9), &d, false);
+    snprintf(out, size, "%04d-%02d-%02dT%02d:%02d:%06.3fZ", d.year, d.month, d.day, d.hour, d.minute, d.second + d.nanosecond / 1e9);
+}
+
+static void print_streams(const twitch_stream *streams, int n, bool json) {
+    for (int i = 0; i < n; i++) {
+        const twitch_stream *s = &streams[i];
+        if (!json) {
+            printf("%7d  %-20s %-28.28s %s\n", s->viewers, s->login, s->category, s->title);
+            continue;
+        }
+        printf("{\"login\":"), print_json(s->login), printf(",\"name\":"), print_json(s->name);
+        printf(",\"viewers\":%d,\"started_at\":", s->viewers), print_json(s->started_at);
+        printf(",\"category\":"), print_json(s->category), printf(",\"language\":"), print_json(s->language);
+        printf(",\"title\":"), print_json(s->title), printf("}\n");
+    }
+    if (!json) printf("%d live\n", n);
+}
+
+static bool api(const char *dir, const char *kind, const char *arg, const char *quality, bool json) {
     char msg[256];
     if (!strcmp(kind, "resolve") && arg) {
         twitch_playback p = { 0 };
@@ -187,18 +223,19 @@ static bool api(const char *dir, const char *kind, const char *arg, const char *
         printf("%s (token expires %lld)\n%s\n", p.quality, p.expires_at, p.url);
         return true;
     }
-    if (!strcmp(kind, "live")) {
+    bool category = !strcmp(kind, "category") && arg;
+    if (!strcmp(kind, "live") || category) {
         twitch_session s;
-        if (!twitch_session_load(dir, &s)) return printf("not signed in (gstream --sign-in)\n"), false;
+        if (!twitch_session_load(dir, &s)) return fprintf(stderr, "not signed in (gstream --sign-in)\n"), false;
         static twitch_stream streams[LIVE_MAX];
         int n;
         char before[sizeof s.access];
         SDL_strlcpy(before, s.access, sizeof before);
-        twitch_error e = twitch_followed_live(GSTREAM_CLIENT_ID, &s, streams, LIVE_MAX, &n, msg, sizeof msg);
+        twitch_error e = category ? twitch_category_live(GSTREAM_CLIENT_ID, &s, arg, streams, LIVE_MAX, &n, msg, sizeof msg)
+                                  : twitch_followed_live(GSTREAM_CLIENT_ID, &s, streams, LIVE_MAX, &n, msg, sizeof msg);
         if (strcmp(before, s.access)) twitch_session_save(dir, &s);  // renewed on the way
-        if (e != TW_OK) return printf("%s: %s\n", twitch_error_text(e), msg), false;
-        for (int i = 0; i < n; i++) printf("%7d  %-20s %-28.28s %s\n", streams[i].viewers, streams[i].login, streams[i].category, streams[i].title);
-        printf("%d live\n", n);
+        if (e != TW_OK) return fprintf(stderr, "%s: %s\n", twitch_error_text(e), msg), false;
+        print_streams(streams, n, json);
         return true;
     }
     return printf("%s", usage), false;
@@ -244,12 +281,14 @@ static void save_bandwidth(const app *a, double bps) {
 SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     app *a = SDL_calloc(1, sizeof *a);
     *state = a;
+    bool json = false;
     const char *data = NULL, *api_kind = NULL, *api_arg = NULL, *api_quality = NULL, *play = NULL, *url = NULL;
     bool do_sign_in = false, do_sign_out = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) return printf("%s", usage), SDL_APP_SUCCESS;
         else if (!strcmp(argv[i], "--data") && i + 1 < argc) data = argv[++i];
         else if (!strcmp(argv[i], "--software")) a->software = true;
+        else if (!strcmp(argv[i], "--json")) json = true;
         else if (!strcmp(argv[i], "--mute")) a->muted = true;
         else if (!strcmp(argv[i], "--demo")) a->demo = true;
         else if (!strcmp(argv[i], "--play") && i + 1 < argc) play = argv[++i];
@@ -271,7 +310,7 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     data_dir(data, a->dir, sizeof a->dir);
     if (do_sign_out) return twitch_session_erase(a->dir), printf("signed out\n"), SDL_APP_SUCCESS;
     if (do_sign_in) return sign_in_here(a->dir) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
-    if (api_kind) return api(a->dir, api_kind, api_arg, api_quality) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
+    if (api_kind) return api(a->dir, api_kind, api_arg, api_quality, json) ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
 
     // A shot is drawn in memory by the software renderer; otherwise the video path picks the renderer.
     const char *driver = NULL;
@@ -428,6 +467,20 @@ SDL_AppResult SDL_AppIterate(void *state) {
         SDL_Surface *s = SDL_RenderReadPixels(a->ren, NULL), *c = s ? SDL_ConvertSurface(s, SDL_PIXELFORMAT_RGBA32) : NULL;
         bool ok = c && stbi_write_png(a->shot, c->w, c->h, 4, c->pixels, c->pitch);
         SDL_DestroySurface(c), SDL_DestroySurface(s);
+        if (ok) {  // for scripts: when the stream says the frame in the shot was made, and when it was captured
+            SDL_Time now_ns = 0;
+            SDL_GetCurrentTime(&now_ns);
+            SDL_LockMutex(a->player.lock);
+            gs_live_info i = a->player.live ? gs_live_get_info(a->player.live) : (gs_live_info){ 0 };
+            SDL_UnlockMutex(a->player.lock);
+            double captured = now_ns / 1e9;
+            char at[40], made[40];
+            utc_text(captured, at, sizeof at);
+            printf("{\"shot\":"), print_json(a->shot), printf(",\"captured\":%.3f,\"captured_utc\":\"%s\"", captured, at);
+            if (i.date > 0) utc_text(i.date, made, sizeof made), printf(",\"frame_time\":%.3f,\"frame_utc\":\"%s\",\"behind\":%.3f", i.date, made, captured - i.date);
+            else printf(",\"frame_time\":null");
+            printf(",\"width\":%d,\"height\":%d}\n", i.video.width, i.video.height);
+        }
         return ok ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
     }
     if (a->persist && a->window_changed && SDL_GetTicks() >= a->next_save) {  // at most every 2 s

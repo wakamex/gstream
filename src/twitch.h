@@ -70,6 +70,8 @@ int twitch_parse_streams(const char *json, size_t len, twitch_stream *out, int m
 // All followed channels that are live, through every page; renews the session once when Twitch
 // says its token expired (the caller saves the changed session).
 twitch_error twitch_followed_live(const char *client_id, twitch_session *s, twitch_stream *out, int max, int *count, char *message, size_t size);
+// The live streams in a category, by its exact name on Twitch such as "Dota 2", most viewers first.
+twitch_error twitch_category_live(const char *client_id, twitch_session *s, const char *category, twitch_stream *out, int max, int *count, char *message, size_t size);
 
 // Fills a thumbnail URL template in for a width and height.
 void twitch_thumbnail_url(const char *template_url, int width, int height, char *out, size_t size);
