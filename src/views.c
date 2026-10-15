@@ -164,7 +164,7 @@ static void draw_stage(app *a, gs_rect stage) {
     gs_live *live = p->live;
     char name[128], message[200];
     SDL_strlcpy(name, p->name, sizeof name), SDL_strlcpy(message, p->message, sizeof message);
-    bool ad = p->ad, video = p->video;
+    bool ad = p->ad, video = p->video, rejoining = player_rejoining(p);
     SDL_UnlockMutex(p->lock);
     SDL_FRect src;
     SDL_Texture *t = live ? gs_live_frame(live, &src) : NULL;
@@ -182,11 +182,12 @@ static void draw_stage(app *a, gs_rect stage) {
     else if (info.state == GS_LIVE_STARTING) status = "Starting\xE2\x80\xA6";
     else if (info.state == GS_LIVE_BUFFERING) status = "Buffering\xE2\x80\xA6";
     else if (!t && video) status = "Waiting for the picture\xE2\x80\xA6";
+    bool failed = state == PLAYER_FAILED || info.state == GS_LIVE_FAILED || info.state == GS_LIVE_ENDED;
+    if (rejoining && (failed || state == PLAYER_RESOLVING)) status = "The stream ended. Waiting for it to come back\xE2\x80\xA6";
     if (status) {
         gs_rect mid = { stage.x, stage.y + stage.h / 2 - 40, stage.w, 80 };
         if (state != PLAYER_IDLE) gs_ui_text(ui, gs_cut_top(&mid, 40), name, 22, st->text, 0);
         gs_ui_text(ui, gs_cut_top(&mid, 40), status, st->text_px, st->muted, 0);
-        bool failed = state == PLAYER_FAILED || info.state == GS_LIVE_FAILED || info.state == GS_LIVE_ENDED;
         if (failed && SDL_strcmp(p->login, "url") && gs_ui_button(ui, (gs_rect){ mid.x + (mid.w - 120) / 2, mid.y + 8, 120, st->row }, "Try again"))
             player_retry(p, a->jobs);
     }

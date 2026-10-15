@@ -29,6 +29,8 @@ typedef struct {
     void (*wake)(void);
     float volume;           // 0 to 1
     bool muted;
+    uint64_t rejoin_until;  // after the stream ended, the channel is looked for again until then (SDL_GetTicks time)
+    uint64_t rejoin_at;     // when it is next looked for
 } player;
 
 void player_init(player *p, SDL_Renderer *r, void (*wake)(void));
@@ -38,3 +40,7 @@ void player_stop(player *p);
 void player_play_url(player *p, const char *url, bool video);  // an HLS media playlist, without Twitch
 void player_set_volume(player *p, float volume, bool muted);
 void player_retry(player *p, gs_jobs *jobs);  // starts the same channel again
+// Called every frame: after a channel's stream ends, starts it again every 10 seconds for 10 minutes,
+// since a streamer who restarts the broadcast comes back under a new playlist.
+void player_poll(player *p, gs_jobs *jobs);
+bool player_rejoining(player *p);  // looking for the channel to come back (with p->lock held)

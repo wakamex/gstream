@@ -412,6 +412,7 @@ SDL_AppResult SDL_AppIterate(void *state) {
     app *a = state;
     gs_stats_frame_begin(&a->stats);
     if (a->auth == SIGNED_IN && a->session.access[0]) live_poll(&a->live, a->jobs, GSTREAM_CLIENT_ID, &a->session, a->lock, a->dir, wake);
+    player_poll(&a->player, a->jobs);
     views_draw(a);
     gs_ui_end(a->ui);
     gs_images_end_frame(a->images);

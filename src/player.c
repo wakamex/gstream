@@ -118,7 +118,7 @@ static void resolve(void *user) {
     free(j);
 }
 
-void player_start(player *p, gs_jobs *jobs, const char *login, const char *name, const char *quality, bool video) {
+static void begin(player *p, gs_jobs *jobs, const char *login, const char *name, const char *quality, bool video) {
     player_stop(p);
     resolve_job *j = malloc(sizeof *j);
     if (!j) return;
@@ -132,6 +132,13 @@ void player_start(player *p, gs_jobs *jobs, const char *login, const char *name,
     SDL_strlcpy(j->login, login, sizeof j->login), SDL_strlcpy(j->quality, p->quality, sizeof j->quality);
     SDL_UnlockMutex(p->lock);
     gs_jobs_add(jobs, resolve, j);
+}
+
+void player_start(player *p, gs_jobs *jobs, const char *login, const char *name, const char *quality, bool video) {
+    SDL_LockMutex(p->lock);
+    p->rejoin_until = 0;
+    SDL_UnlockMutex(p->lock);
+    begin(p, jobs, login, name, quality, video);
 }
 
 void player_stop(player *p) {
@@ -152,7 +159,26 @@ void player_retry(player *p, gs_jobs *jobs) {
     SDL_strlcpy(login, p->login, sizeof login), SDL_strlcpy(name, p->name, sizeof name);
     bool video = p->video;
     SDL_UnlockMutex(p->lock);
-    player_start(p, jobs, login, name, NULL, video);
+    begin(p, jobs, login, name, NULL, video);
+}
+
+#define REJOIN_FOR_MS 600000
+#define REJOIN_EVERY_MS 10000
+
+bool player_rejoining(player *p) { return p->rejoin_until && SDL_GetTicks() < p->rejoin_until; }
+
+void player_poll(player *p, gs_jobs *jobs) {
+    uint64_t now = SDL_GetTicks();
+    SDL_LockMutex(p->lock);
+    gs_live_state s = p->live ? gs_live_get_info(p->live).state : GS_LIVE_STARTING;
+    bool ended = p->state == PLAYER_PLAYING && (s == GS_LIVE_ENDED || s == GS_LIVE_FAILED) && SDL_strcmp(p->login, "url");
+    bool offline = p->state == PLAYER_FAILED && (p->error == TW_OFFLINE || p->error == TW_NETWORK);
+    if (s == GS_LIVE_PLAYING) p->rejoin_until = 0;
+    if (ended && !p->rejoin_until) p->rejoin_until = now + REJOIN_FOR_MS, p->rejoin_at = now;
+    bool again = (ended || offline) && player_rejoining(p) && now >= p->rejoin_at;
+    if (again) p->rejoin_at = now + REJOIN_EVERY_MS;
+    SDL_UnlockMutex(p->lock);
+    if (again) player_retry(p, jobs);
 }
 
 void player_set_volume(player *p, float volume, bool muted) {
