@@ -24,6 +24,7 @@ static const char usage[] =
     "  --play CHANNEL                          start watching a channel\n"
     "  --quality Q, --audio-only               the rendition to play (auto, best, 720p60, audio_only...)\n"
     "  --url URL                               play an HLS media playlist directly, for testing\n"
+    "  --resume                                go on with the channel playing when gstream last quit\n"
     "  --demo                                  100 made-up channels, for trying the interface offline\n"
     "  --software                              decode video in software\n"
     "  --mute                                  start muted\n"
@@ -278,12 +279,43 @@ static void save_bandwidth(const app *a, double bps) {
     SDL_SaveFile(path, text, (size_t)n);
 }
 
+// The channel playing when gstream quits, for --resume (which the tools that replace a running
+// gstream pass): its login, quality, video, full window and name, a line each.
+static void resume_path(const app *a, char *out, size_t size) { snprintf(out, size, "%sresume.txt", a->dir); }
+
+static void save_resume(app *a) {
+    char path[1200], text[400];
+    resume_path(a, path, sizeof path);
+    player *p = &a->player;
+    SDL_LockMutex(p->lock);
+    bool playing = p->state != PLAYER_IDLE && SDL_strcmp(p->login, "url");
+    int n = SDL_snprintf(text, sizeof text, "%s\n%s\n%d\n%d\n%s\n", p->login, p->quality, p->video, a->theater, p->name);
+    SDL_UnlockMutex(p->lock);
+    if (playing) SDL_SaveFile(path, text, (size_t)n);
+    else SDL_RemovePath(path);
+}
+
+static void resume(app *a) {
+    char path[1200];
+    resume_path(a, path, sizeof path);
+    char *text = SDL_LoadFile(path, NULL), *at = NULL;
+    SDL_RemovePath(path);  // (used once)
+    const char *login = text ? SDL_strtok_r(text, "\n", &at) : NULL, *quality = SDL_strtok_r(NULL, "\n", &at);
+    const char *video = SDL_strtok_r(NULL, "\n", &at), *theater = SDL_strtok_r(NULL, "\n", &at), *name = SDL_strtok_r(NULL, "\n", &at);
+    if (name) {
+        player_start(&a->player, a->jobs, login, name, quality, SDL_atoi(video));
+        a->theater = SDL_atoi(theater);
+        if (a->auth == SIGNED_OUT) a->auth = SIGNED_IN;  // (as with --play: playback needs no account)
+    }
+    SDL_free(text);
+}
+
 SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     app *a = SDL_calloc(1, sizeof *a);
     *state = a;
     bool json = false;
     const char *data = NULL, *api_kind = NULL, *api_arg = NULL, *api_quality = NULL, *play = NULL, *url = NULL;
-    bool do_sign_in = false, do_sign_out = false;
+    bool do_sign_in = false, do_sign_out = false, do_resume = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) return printf("%s", usage), SDL_APP_SUCCESS;
         else if (!strcmp(argv[i], "--data") && i + 1 < argc) data = argv[++i];
@@ -295,6 +327,7 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
         else if (!strcmp(argv[i], "--quality") && i + 1 < argc) a->quality = argv[++i];
         else if (!strcmp(argv[i], "--audio-only")) a->audio_only = true;
         else if (!strcmp(argv[i], "--url") && i + 1 < argc) url = argv[++i];
+        else if (!strcmp(argv[i], "--resume")) do_resume = true;
         else if (!strcmp(argv[i], "--sign-in")) do_sign_in = true;
         else if (!strcmp(argv[i], "--sign-out")) do_sign_out = true;
         else if (!strcmp(argv[i], "--api") && i + 1 < argc) {
@@ -359,7 +392,7 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
         if (url) player_play_url(&a->player, url, !a->audio_only);
         else watch(a, play, play);
         a->theater = true;
-    }
+    } else if (do_resume && a->persist) resume(a);
     // Test modes draw every frame; otherwise the window waits for events, timers and finished work.
     if (!a->shot && !a->stats_file) SDL_SetHint(SDL_HINT_MAIN_CALLBACK_RATE, "waitevent");
     if (a->quit_at > 0) SDL_AddTimer((Uint32)(a->quit_at * 1000), quit_later, NULL);  // (a waiting window may not draw again)
@@ -508,6 +541,7 @@ void SDL_AppQuit(void *state, SDL_AppResult result) {
     if (wake_timer) SDL_RemoveTimer(wake_timer);
     SDL_SetAtomicInt(&a->auth_cancel, 1);
     if (a->jobs) gs_jobs_wait(a->jobs);
+    if (a->persist && a->player.lock) save_resume(a);
     if (a->player.lock) player_free(&a->player);  // (which records the last estimate)
     if (a->persist && a->player.bandwidth > 0) save_bandwidth(a, a->player.bandwidth);
     gs_mix_close();
