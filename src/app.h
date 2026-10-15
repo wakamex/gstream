@@ -40,7 +40,8 @@ typedef struct {
     bool compact;          // rows instead of cards
     int sort;              // a live_sort
     player player;
-    bool theater;          // the player fills the window
+    bool theater;          // the player alone fills the window, in a window or full screen
+    bool theater_before_full;  // theater as it was before full screen, which leaving it goes back to
     bool about;            // the about card is open
     uint64_t pointer_moved;  // when the pointer last moved (the full-window player's controls show for a while after)
     float volume;
@@ -65,3 +66,4 @@ void sign_in_start(app *a);
 void sign_in_cancel(app *a);
 void sign_out(app *a);
 void watch(app *a, const char *login, const char *name);
+void set_full_screen(app *a, bool on);  // full screen shows the player alone

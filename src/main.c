@@ -406,7 +406,7 @@ SDL_AppResult SDL_AppEvent(void *state, SDL_Event *e) {
     if (gs_window_state_track(&a->window, a->win, e)) a->window_changed = true;
     if (e->type == SDL_EVENT_MOUSE_MOTION) a->pointer_moved = SDL_GetTicks();
     if (e->type == SDL_EVENT_KEY_DOWN && (e->key.key == SDLK_F11 || (e->key.key == SDLK_RETURN && (e->key.mod & SDL_KMOD_ALT)))) {
-        SDL_SetWindowFullscreen(a->win, !(SDL_GetWindowFlags(a->win) & SDL_WINDOW_FULLSCREEN));
+        set_full_screen(a, !(SDL_GetWindowFlags(a->win) & SDL_WINDOW_FULLSCREEN));
         return SDL_APP_CONTINUE;
     }
     if (e->type == SDL_EVENT_KEY_DOWN && e->key.key == SDLK_F1) a->show_stats = !a->show_stats;

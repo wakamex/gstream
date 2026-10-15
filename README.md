@@ -22,7 +22,7 @@ Download the archive for your system from the Releases page, unpack it and run `
 Keys:
 
 - `/` or `Ctrl+F` searches the list; arrow keys, `Page Up`, `Page Down`, `Home` and `End` move through it; `Enter` watches.
-- `F` or the Full button shows the player alone, full screen; `Esc` goes back.
+- `T` or the Theater button shows the player alone, filling the window; `F` or the Full button shows it full screen, and leaving full screen goes back to the window as it was; `Esc` goes back one step.
 - `M` mutes. `F1` shows the diagnostics overlay: the rendition, buffer, decoding path, dropped frames, clock error, CPU and memory.
 - `F11` or `Alt+Enter` makes the window full screen.
 

@@ -145,10 +145,20 @@ static void draw_sidebar(app *a, gs_rect side) {
 
 // ---- The player ----
 
-// The player alone, full screen, or back to the window as it was.
-static void set_theater(app *a, bool on) {
-    a->theater = on;
+static bool is_full_screen(app *a) { return SDL_GetWindowFlags(a->win) & SDL_WINDOW_FULLSCREEN; }
+
+// The player alone, full screen; leaving goes back to the window as it was, with or without the list.
+void set_full_screen(app *a, bool on) {
+    if (on == is_full_screen(a)) return;
+    if (on) a->theater_before_full = a->theater;
+    a->theater = on || a->theater_before_full;
     SDL_SetWindowFullscreen(a->win, on);
+}
+
+// Back from full screen, then from the player alone to the list.
+static void leave_player(app *a) {
+    if (is_full_screen(a)) set_full_screen(a, false);
+    else a->theater = false;
 }
 
 static void percent(float v, char *out, size_t size) { SDL_snprintf(out, size, "%d%%", (int)(v * 100 + 0.5f)); }
@@ -224,8 +234,10 @@ static void draw_player_bar(app *a, gs_rect bar) {
         items[count++] = SDL_memcpy(names[i], p->qualities[i], sizeof names[i]);
     }
     SDL_UnlockMutex(p->lock);
-    gs_rect full = gs_cut_right(&c, 70);
-    if (gs_ui_button(ui, full, a->theater ? "Window" : "Full") || gs_ui_key(ui, SDLK_F, 0)) set_theater(a, !a->theater);
+    bool full = is_full_screen(a);
+    if (gs_ui_button(ui, gs_cut_right(&c, 70), full ? "Window" : "Full") || gs_ui_key(ui, SDLK_F, 0)) set_full_screen(a, !full);
+    gs_cut_right(&c, 6);
+    if (!full && (gs_ui_button(ui, gs_cut_right(&c, 80), a->theater ? "List" : "Theater") || gs_ui_key(ui, SDLK_T, 0))) a->theater = !a->theater;
     gs_cut_right(&c, 8);
     char pct[16];
     percent(a->volume, pct, sizeof pct);
@@ -236,7 +248,7 @@ static void draw_player_bar(app *a, gs_rect bar) {
     gs_cut_right(&c, 8);
     if (gs_ui_button(ui, gs_cut_right(&c, 70), a->muted ? "Unmute" : "Mute") || gs_ui_key(ui, SDLK_M, 0)) a->muted = !a->muted, player_set_volume(p, a->volume, a->muted);
     gs_cut_right(&c, 6);
-    if (state != PLAYER_IDLE && gs_ui_button(ui, gs_cut_right(&c, 64), "Stop")) player_stop(p), set_theater(a, false);
+    if (state != PLAYER_IDLE && gs_ui_button(ui, gs_cut_right(&c, 64), "Stop")) player_stop(p), set_full_screen(a, false), a->theater = false;
     gs_cut_right(&c, 6);
     if (count > 1 && gs_ui_dropdown(ui, gs_cut_right(&c, 118), "quality", items, count, &chosen)) {
         char login[64], name[128];
@@ -275,11 +287,12 @@ static void draw_main(app *a, gs_rect m) {
     }
 }
 
-// The player filling the window; its controls show while the pointer has moved in the last 3 seconds.
+// The player filling the window (theater) or the screen; its controls show while the pointer has moved
+// in the last 3 seconds.
 static void draw_theater(app *a, gs_rect win) {
     draw_stage(a, win);
     if (SDL_GetTicks() - a->pointer_moved < 3000) draw_player_bar(a, gs_cut_bottom(&win, 44));
-    if (gs_ui_key(a->ui, SDLK_ESCAPE, 0)) set_theater(a, false);
+    if (gs_ui_key(a->ui, SDLK_ESCAPE, 0)) leave_player(a);
 }
 
 // What gstream is built from, with each part's licence.
