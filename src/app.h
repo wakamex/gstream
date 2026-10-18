@@ -47,9 +47,7 @@ typedef struct {
     float volume;
     bool muted;
 
-    gs_window_state window;
-    bool persist, window_changed;
-    uint64_t next_save;
+    bool persist;          // settings are kept between runs (not in the test modes or --demo)
 
     // Options and test modes.
     bool show_stats, demo, software, audio_only;

@@ -259,8 +259,6 @@ static void data_dir(const char *data, char *out, size_t size) {
     SDL_free(pref);
 }
 
-static void window_path(const app *a, char *out, size_t size) { snprintf(out, size, "%swindow.txt", a->dir); }
-
 // The last throughput estimate, in bits a second, kept between runs so adaptive play starts at a
 // rendition the connection carried.
 static double load_bandwidth(const app *a) {
@@ -352,24 +350,23 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     if (!SDL_Init(SDL_INIT_VIDEO | (a->shot ? 0 : SDL_INIT_AUDIO))) return SDL_Log("SDL_Init: %s", SDL_GetError()), SDL_APP_FAILURE;
     wake_event = SDL_RegisterEvents(1);
     a->persist = !a->shot && !a->demo && !a->stats_file;
-    a->window = (gs_window_state){ (int)SDL_WINDOWPOS_CENTERED, (int)SDL_WINDOWPOS_CENTERED, 1100, 700, false, false };
-    char wpath[1200];
-    window_path(a, wpath, sizeof wpath);
-    if (a->persist) gs_window_state_load(wpath, &a->window);
     SDL_PropertiesID p = SDL_CreateProperties();
     SDL_SetStringProperty(p, SDL_PROP_WINDOW_CREATE_TITLE_STRING, "gstream");
-    SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, a->window.w);
-    SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, a->window.h);
+    SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, 1100);
+    SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, 700);
     SDL_SetNumberProperty(p, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
     SDL_SetBooleanProperty(p, SDL_PROP_WINDOW_CREATE_EXTERNAL_GRAPHICS_CONTEXT_BOOLEAN, a->shot != NULL);
     a->win = SDL_CreateWindowWithProperties(p);
     SDL_DestroyProperties(p);
     if (!a->win || !(a->ren = SDL_CreateRenderer(a->win, a->shot ? NULL : driver))) return SDL_Log("window: %s", SDL_GetError()), SDL_APP_FAILURE;
-    gs_window_state_apply(&a->window, a->win);
-    SDL_ShowWindow(a->win);
-    gs_pace_set(&a->pace, a->win, a->ren, true, GS_PACE_DISPLAY);
+    // gs_ui puts the window back where it was left, from window.txt in the data folder, and keeps it there.
+    char place[1200];
+    snprintf(place, sizeof place, "%swindow.txt", a->dir);
+    SDL_SetStringProperty(SDL_GetWindowProperties(a->win), GS_UI_PLACE, a->persist ? place : "");
     a->fonts = gs_fontset_system();
     a->ui = gs_ui_new(a->win, a->ren, a->fonts);
+    SDL_ShowWindow(a->win);
+    gs_pace_set(&a->pace, a->win, a->ren, true, GS_PACE_DISPLAY);
     a->jobs = gs_jobs_new(4);
     if (!a->shot && !gs_mix_open(48000)) SDL_Log("audio: %s", SDL_GetError());  // (plays on without sound)
     a->volume = 0.8f;
@@ -403,7 +400,6 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
 SDL_AppResult SDL_AppEvent(void *state, SDL_Event *e) {
     app *a = state;
     if (e->type == SDL_EVENT_QUIT || e->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) return SDL_APP_SUCCESS;
-    if (gs_window_state_track(&a->window, a->win, e)) a->window_changed = true;
     if (e->type == SDL_EVENT_MOUSE_MOTION) a->pointer_moved = SDL_GetTicks();
     if (e->type == SDL_EVENT_KEY_DOWN && (e->key.key == SDLK_F11 || (e->key.key == SDLK_RETURN && (e->key.mod & SDL_KMOD_ALT)))) {
         set_full_screen(a, !(SDL_GetWindowFlags(a->win) & SDL_WINDOW_FULLSCREEN));
@@ -436,7 +432,6 @@ static void schedule(app *a) {
         int until = next > now ? (int)(next - now) : 0;
         if (ms < 0 || until < ms) ms = until + 1;
     }
-    if (a->persist && a->window_changed && (ms < 0 || ms > 2000)) ms = 2000;
     if (wake_timer) SDL_RemoveTimer(wake_timer), wake_timer = 0;
     if (ms >= 0) wake_timer = SDL_AddTimer((Uint32)(ms ? ms : 1), wake_later, NULL);
 }
@@ -517,12 +512,6 @@ SDL_AppResult SDL_AppIterate(void *state) {
         }
         return ok ? SDL_APP_SUCCESS : SDL_APP_FAILURE;
     }
-    if (a->persist && a->window_changed && SDL_GetTicks() >= a->next_save) {  // at most every 2 s
-        char wpath[1200];
-        window_path(a, wpath, sizeof wpath);
-        gs_window_state_save(wpath, &a->window);
-        a->window_changed = false, a->next_save = SDL_GetTicks() + 2000;
-    }
     SDL_RenderPresent(a->ren);
     gs_pace_wait(&a->pace);
     schedule(a);
@@ -533,11 +522,6 @@ void SDL_AppQuit(void *state, SDL_AppResult result) {
     app *a = state;
     (void)result;
     if (!a) return;
-    if (a->persist && a->win) {
-        char wpath[1200];
-        window_path(a, wpath, sizeof wpath);
-        gs_window_state_save(wpath, &a->window);
-    }
     if (wake_timer) SDL_RemoveTimer(wake_timer);
     SDL_SetAtomicInt(&a->auth_cancel, 1);
     if (a->jobs) gs_jobs_wait(a->jobs);
