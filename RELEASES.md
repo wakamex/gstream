@@ -43,6 +43,10 @@ gh attestation verify ASSET --repo wakamex/gstream \
 gh release verify-asset vX.Y.Z ASSET --repo wakamex/gstream
 ```
 
+## Builds that update themselves
+
+Release builds never update themselves. `tools/publish-update` builds the current commit for Windows with `-Dbuild=` set to its short hash, signs a manifest of its files with the Ed25519 key in `~/.config/gstream/update-signing.key`, and uploads it to the update server named in `src/update.c`. A copy built that way and running on its own data folder checks the manifest every minute; when another build is published it fetches the changed files, checks each against its SHA-256, puts them in place, and once the window has been left alone for 10 seconds quits as usual and starts the new build, which goes on with the channel that was playing. The server's `gstream-windows.zip` holds the same files, for a first install.
+
 ## One-time setup
 
 - Turn on immutable releases in the repository settings.

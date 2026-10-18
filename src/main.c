@@ -343,6 +343,7 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
         else if (!strcmp(argv[i], "--audio-only")) a->audio_only = true;
         else if (!strcmp(argv[i], "--url") && i + 1 < argc) url = argv[++i];
         else if (!strcmp(argv[i], "--resume")) do_resume = true;
+        else if (!strcmp(argv[i], "--restarted")) SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");  // (after an update, without taking the keyboard)
         else if (!strcmp(argv[i], "--sign-in")) do_sign_in = true;
         else if (!strcmp(argv[i], "--sign-out")) do_sign_out = true;
         else if (!strcmp(argv[i], "--api") && i + 1 < argc) {
@@ -413,6 +414,9 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     // Test modes draw every frame; otherwise the window waits for events, timers and finished work.
     if (!a->shot && !a->stats_file) SDL_SetHint(SDL_HINT_MAIN_CALLBACK_RATE, "waitevent");
     if (a->quit_at > 0) SDL_AddTimer((Uint32)(a->quit_at * 1000), quit_later, NULL);  // (a waiting window may not draw again)
+    // A published build on the user's own data keeps itself up to date (GSTREAM_UPDATE_FROM, for
+    // trying it out, allows any data).
+    if (a->persist && (!data || SDL_getenv("GSTREAM_UPDATE_FROM"))) a->update = gstream_update_start(SDL_GetBasePath(), wake);
     a->started = SDL_GetTicks();
     return SDL_APP_CONTINUE;
 }
@@ -421,6 +425,7 @@ SDL_AppResult SDL_AppEvent(void *state, SDL_Event *e) {
     app *a = state;
     if (e->type == SDL_EVENT_QUIT || e->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) return SDL_APP_SUCCESS;
     if (e->type == SDL_EVENT_MOUSE_MOTION) a->pointer_moved = SDL_GetTicks();
+    if (e->type == SDL_EVENT_MOUSE_MOTION || e->type == SDL_EVENT_MOUSE_BUTTON_DOWN || e->type == SDL_EVENT_MOUSE_WHEEL || e->type == SDL_EVENT_KEY_DOWN) a->input_at = SDL_GetTicks();
     if (e->type == SDL_EVENT_KEY_DOWN && (e->key.key == SDLK_F11 || (e->key.key == SDLK_RETURN && (e->key.mod & SDL_KMOD_ALT)))) {
         set_full_screen(a, !(SDL_GetWindowFlags(a->win) & SDL_WINDOW_FULLSCREEN));
         return SDL_APP_CONTINUE;
@@ -429,6 +434,8 @@ SDL_AppResult SDL_AppEvent(void *state, SDL_Event *e) {
     gs_ui_event(a->ui, e);
     return SDL_APP_CONTINUE;
 }
+
+#define UPDATE_IDLE_MS 10000  // how long the window is left alone before a newer build in place starts
 
 // When the window should next draw on its own: every frame while video plays; otherwise for the
 // interface's timers, images arriving, the player's status, and the list's refresh.
@@ -452,12 +459,19 @@ static void schedule(app *a) {
         int until = next > now ? (int)(next - now) : 0;
         if (ms < 0 || until < ms) ms = until + 1;
     }
+    if (gstream_update_ready(a->update)) {  // (to start the new build once the window has been left alone)
+        int until = (int)SDL_max(0, (int64_t)(a->input_at + UPDATE_IDLE_MS) - (int64_t)SDL_GetTicks());
+        if (ms < 0 || until < ms) ms = until + 1;
+    }
     if (wake_timer) SDL_RemoveTimer(wake_timer), wake_timer = 0;
     if (ms >= 0) wake_timer = SDL_AddTimer((Uint32)(ms ? ms : 1), wake_later, NULL);
 }
 
 SDL_AppResult SDL_AppIterate(void *state) {
     app *a = state;
+    // A newer build is in place: once the window has been left alone, gstream quits as usual, saving
+    // the channel that plays, and the new build starts and goes on with it.
+    if (gstream_update_ready(a->update) && SDL_GetTicks() - a->input_at >= UPDATE_IDLE_MS) return a->restart = true, SDL_APP_SUCCESS;
     gs_stats_frame_begin(&a->stats);
     if (a->auth == SIGNED_IN && a->session.access[0]) live_poll(&a->live, a->jobs, GSTREAM_CLIENT_ID, &a->session, a->lock, a->dir, wake);
     player_poll(&a->player, a->jobs);
@@ -543,6 +557,7 @@ void SDL_AppQuit(void *state, SDL_AppResult result) {
     (void)result;
     if (!a) return;
     if (wake_timer) SDL_RemoveTimer(wake_timer);
+    gstream_update_free(a->update);
     SDL_SetAtomicInt(&a->auth_cancel, 1);
     if (a->jobs) gs_jobs_wait(a->jobs);
     if (a->persist && a->player.lock) save_resume(a), save_volume(a);
@@ -557,5 +572,6 @@ void SDL_AppQuit(void *state, SDL_AppResult result) {
     if (a->ren) SDL_DestroyRenderer(a->ren);
     if (a->win) SDL_DestroyWindow(a->win);
     SDL_DestroyMutex(a->lock);
+    if (a->restart) gstream_update_restart(SDL_GetBasePath());
     SDL_free(a);
 }

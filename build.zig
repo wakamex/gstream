@@ -17,9 +17,12 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const gesso = b.dependency("gesso", .{ .target = target, .optimize = optimize, .video = true }).artifact("gesso");
     const client_id = b.option([]const u8, "client-id", "Twitch application Client ID (default: gstream's)") orelse client_id_default;
+    // The build's name, given by tools/publish-update; a build without one never updates itself.
+    const build_name = b.option([]const u8, "build", "Name this a published build, which keeps itself up to date (tools/publish-update)");
 
     const mod = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .strip = optimize != .debug });
-    mod.addCSourceFiles(.{ .root = b.path("src"), .files = &.{ "main.c", "views.c", "live.c", "player.c", "twitch.c" }, .flags = flags });
+    mod.addCSourceFiles(.{ .root = b.path("src"), .files = &.{ "main.c", "views.c", "live.c", "player.c", "twitch.c", "update.c" }, .flags = flags });
+    if (build_name) |name| mod.addCMacro("GSTREAM_BUILD", b.fmt("\"{s}\"", .{name}));
     mod.addCMacro("GSTREAM_VERSION", "\"" ++ zon.version ++ "\"");
     mod.addCMacro("GSTREAM_CLIENT_ID", b.fmt("\"{s}\"", .{client_id}));
     mod.linkLibrary(gesso);
