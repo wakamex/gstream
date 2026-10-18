@@ -277,6 +277,23 @@ static void save_bandwidth(const app *a, double bps) {
     SDL_SaveFile(path, text, (size_t)n);
 }
 
+// The volume (0 to 1) and whether it is muted, kept between runs: "0.35 0".
+static void load_volume(app *a) {
+    char path[1200];
+    snprintf(path, sizeof path, "%svolume.txt", a->dir);
+    char *text = SDL_LoadFile(path, NULL), *end = NULL;
+    double v = text ? SDL_strtod(text, &end) : -1;
+    if (v >= 0 && v <= 1) a->volume = (float)v, a->muted = a->muted || SDL_atoi(end) == 1;  // (--mute mutes either way)
+    SDL_free(text);
+}
+
+static void save_volume(const app *a) {
+    char path[1200], text[32];
+    snprintf(path, sizeof path, "%svolume.txt", a->dir);
+    int n = snprintf(text, sizeof text, "%.2f %d\n", a->volume, a->muted);
+    SDL_SaveFile(path, text, (size_t)n);
+}
+
 // The channel playing when gstream quits, for --resume (which the tools that replace a running
 // gstream pass): its login, quality, video, full window and name, a line each.
 static void resume_path(const app *a, char *out, size_t size) { snprintf(out, size, "%sresume.txt", a->dir); }
@@ -370,6 +387,7 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     a->jobs = gs_jobs_new(4);
     if (!a->shot && !gs_mix_open(48000)) SDL_Log("audio: %s", SDL_GetError());  // (plays on without sound)
     a->volume = 0.8f;
+    if (a->persist) load_volume(a);
     player_init(&a->player, a->ren, wake);
     player_set_volume(&a->player, a->volume, a->muted);
     if (a->persist) a->player.bandwidth = load_bandwidth(a);
@@ -525,7 +543,7 @@ void SDL_AppQuit(void *state, SDL_AppResult result) {
     if (wake_timer) SDL_RemoveTimer(wake_timer);
     SDL_SetAtomicInt(&a->auth_cancel, 1);
     if (a->jobs) gs_jobs_wait(a->jobs);
-    if (a->persist && a->player.lock) save_resume(a);
+    if (a->persist && a->player.lock) save_resume(a), save_volume(a);
     if (a->player.lock) player_free(&a->player);  // (which records the last estimate)
     if (a->persist && a->player.bandwidth > 0) save_bandwidth(a, a->player.bandwidth);
     gs_mix_close();
