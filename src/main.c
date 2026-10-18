@@ -364,6 +364,8 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     const char *driver = NULL;
     if (a->shot) SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen"), SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
     else driver = gs_video_prepare(!a->software);
+    SDL_SetHint(SDL_HINT_WINDOWS_INTRESOURCE_ICON, "1");  // (the icon built into the Windows program)
+    SDL_SetHint(SDL_HINT_WINDOWS_INTRESOURCE_ICON_SMALL, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | (a->shot ? 0 : SDL_INIT_AUDIO))) return SDL_Log("SDL_Init: %s", SDL_GetError()), SDL_APP_FAILURE;
     wake_event = SDL_RegisterEvents(1);
     a->persist = !a->shot && !a->demo && !a->stats_file;

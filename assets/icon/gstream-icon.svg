@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="gstream app icon">
+  <!-- The window's dark background, on a rounded square -->
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="#111312"/>
+  <!-- A play triangle with rounded corners, in the interface's accent -->
+  <path d="M86 66c0-12 13-19 23-13l94 62c9 6 9 20 0 26l-94 62c-10 6-23-1-23-13z" fill="#35C2A5"/>
+  <!-- A live dot at the upper right, in the colour of the player's Ad badge -->
+  <circle cx="198" cy="58" r="22" fill="#F2994A"/>
+</svg>

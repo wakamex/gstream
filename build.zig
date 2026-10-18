@@ -25,6 +25,7 @@ pub fn build(b: *std.Build) void {
     mod.linkLibrary(gesso);
     const exe = b.addExecutable(.{ .name = "gstream", .root_module = mod });
     if (target.result.os.tag == .windows) exe.subsystem = .windows;
+    if (target.result.os.tag == .windows) exe.root_module.addWin32ResourceFile(.{ .file = b.path("assets/icon/gstream.rc") });
     b.installArtifact(exe);
 
     const run = b.addRunArtifact(exe);
