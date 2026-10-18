@@ -10,6 +10,7 @@
 
 #include "app.h"
 #include "gs_mix.h"
+#include "gs_update.h"
 #include "gs_video.h"
 #include "stb_image_write.h"
 
@@ -277,6 +278,35 @@ static void save_bandwidth(const app *a, double bps) {
     SDL_SaveFile(path, text, (size_t)n);
 }
 
+// A build published with tools/publish-update keeps itself up to date from the update server, through
+// gesso's gs_update: a manifest of the build's files signed with the publisher's Ed25519 key, whose
+// public half is this. Any other build (a release, or one's own) never looks.
+#define UPDATE_SERVER "http://136.243.110.49:8072"
+static const uint8_t publisher[32] = {
+    0xb9, 0x1a, 0x09, 0x55, 0xbc, 0x05, 0xbc, 0x25, 0x9f, 0xa8, 0x97, 0x5e, 0x47, 0x2a, 0x4a, 0x11,
+    0xa8, 0xdb, 0xe3, 0x20, 0x87, 0x24, 0xbd, 0x8a, 0x33, 0xa0, 0xff, 0x08, 0x74, 0xac, 0x16, 0xd7,
+};
+#ifdef _WIN32
+#define PROGRAM "gstream.exe"
+#else
+#define PROGRAM "gstream"
+#endif
+
+static void update_ready(void *user) { (void)user, wake(); }
+
+// GSTREAM_UPDATE_FROM names another server, for trying it out.
+static gs_update *update_start(void) {
+#ifdef GSTREAM_BUILD
+    const char *from = SDL_getenv("GSTREAM_UPDATE_FROM");
+    char manifest[512];
+    SDL_snprintf(manifest, sizeof manifest, "%s/manifest.txt", from && *from ? from : UPDATE_SERVER);
+    gs_update_config c = { .build = GSTREAM_BUILD, .manifest = manifest, .key = publisher, .program = PROGRAM, .agent = "gstream", .ready = update_ready };
+    return gs_update_start(&c);
+#else
+    return NULL;
+#endif
+}
+
 // The volume (0 to 1) and whether it is muted, kept between runs: "0.35 0".
 static void load_volume(app *a) {
     char path[1200];
@@ -416,7 +446,7 @@ SDL_AppResult SDL_AppInit(void **state, int argc, char **argv) {
     if (a->quit_at > 0) SDL_AddTimer((Uint32)(a->quit_at * 1000), quit_later, NULL);  // (a waiting window may not draw again)
     // A published build on the user's own data keeps itself up to date (GSTREAM_UPDATE_FROM, for
     // trying it out, allows any data).
-    if (a->persist && (!data || SDL_getenv("GSTREAM_UPDATE_FROM"))) a->update = gstream_update_start(SDL_GetBasePath(), wake);
+    if (a->persist && (!data || SDL_getenv("GSTREAM_UPDATE_FROM"))) a->update = update_start();
     a->started = SDL_GetTicks();
     return SDL_APP_CONTINUE;
 }
@@ -459,7 +489,7 @@ static void schedule(app *a) {
         int until = next > now ? (int)(next - now) : 0;
         if (ms < 0 || until < ms) ms = until + 1;
     }
-    if (gstream_update_ready(a->update)) {  // (to start the new build once the window has been left alone)
+    if (gs_update_ready(a->update)) {  // (to start the new build once the window has been left alone)
         int until = (int)SDL_max(0, (int64_t)(a->input_at + UPDATE_IDLE_MS) - (int64_t)SDL_GetTicks());
         if (ms < 0 || until < ms) ms = until + 1;
     }
@@ -471,7 +501,7 @@ SDL_AppResult SDL_AppIterate(void *state) {
     app *a = state;
     // A newer build is in place: once the window has been left alone, gstream quits as usual, saving
     // the channel that plays, and the new build starts and goes on with it.
-    if (gstream_update_ready(a->update) && SDL_GetTicks() - a->input_at >= UPDATE_IDLE_MS) return a->restart = true, SDL_APP_SUCCESS;
+    if (gs_update_ready(a->update) && SDL_GetTicks() - a->input_at >= UPDATE_IDLE_MS) return a->restart = true, SDL_APP_SUCCESS;
     gs_stats_frame_begin(&a->stats);
     if (a->auth == SIGNED_IN && a->session.access[0]) live_poll(&a->live, a->jobs, GSTREAM_CLIENT_ID, &a->session, a->lock, a->dir, wake);
     player_poll(&a->player, a->jobs);
@@ -557,7 +587,7 @@ void SDL_AppQuit(void *state, SDL_AppResult result) {
     (void)result;
     if (!a) return;
     if (wake_timer) SDL_RemoveTimer(wake_timer);
-    gstream_update_free(a->update);
+    gs_update_free(a->update);
     SDL_SetAtomicInt(&a->auth_cancel, 1);
     if (a->jobs) gs_jobs_wait(a->jobs);
     if (a->persist && a->player.lock) save_resume(a), save_volume(a);
@@ -572,6 +602,9 @@ void SDL_AppQuit(void *state, SDL_AppResult result) {
     if (a->ren) SDL_DestroyRenderer(a->ren);
     if (a->win) SDL_DestroyWindow(a->win);
     SDL_DestroyMutex(a->lock);
-    if (a->restart) gstream_update_restart(SDL_GetBasePath());
+    if (a->restart) {  // (on with the channel this one saved as it quit, and without taking the keyboard)
+        char *args[] = { PROGRAM, "--resume", "--restarted", NULL };
+        if (!gs_update_restart(NULL, PROGRAM, 3, args)) SDL_Log("gstream: the new build could not be started: %s", SDL_GetError());
+    }
     SDL_free(a);
 }

@@ -12,7 +12,7 @@
 #include "live.h"
 #include "player.h"
 #include "twitch.h"
-#include "update.h"
+#include "gs_update.h"
 
 typedef enum { SIGNED_OUT, SIGNING_IN, SIGNED_IN } auth_state;
 
@@ -49,7 +49,7 @@ typedef struct {
     bool muted;
 
     bool persist;          // settings are kept between runs (not in the test modes or --demo)
-    gstream_update *update;  // looking for a newer build, in a published one
+    gs_update *update;     // looking for a newer build, in a published one
     uint64_t input_at;     // when a key, a button or the pointer was last used
     bool restart;          // quitting to start the newer build in place
 

@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
     const build_name = b.option([]const u8, "build", "Name this a published build, which keeps itself up to date (tools/publish-update)");
 
     const mod = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true, .strip = optimize != .debug });
-    mod.addCSourceFiles(.{ .root = b.path("src"), .files = &.{ "main.c", "views.c", "live.c", "player.c", "twitch.c", "update.c" }, .flags = flags });
+    mod.addCSourceFiles(.{ .root = b.path("src"), .files = &.{ "main.c", "views.c", "live.c", "player.c", "twitch.c" }, .flags = flags });
     if (build_name) |name| mod.addCMacro("GSTREAM_BUILD", b.fmt("\"{s}\"", .{name}));
     mod.addCMacro("GSTREAM_VERSION", "\"" ++ zon.version ++ "\"");
     mod.addCMacro("GSTREAM_CLIENT_ID", b.fmt("\"{s}\"", .{client_id}));
