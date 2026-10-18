@@ -281,7 +281,7 @@ static void save_bandwidth(const app *a, double bps) {
 // A build published with tools/publish-update keeps itself up to date from the update server, through
 // gesso's gs_update: a manifest of the build's files signed with the publisher's Ed25519 key, whose
 // public half is this. Any other build (a release, or one's own) never looks.
-#define UPDATE_SERVER "http://136.243.110.49:8072"
+#define UPDATE_SERVER "http://updates.waka.mx/gstream"
 static const uint8_t publisher[32] = {
     0xb9, 0x1a, 0x09, 0x55, 0xbc, 0x05, 0xbc, 0x25, 0x9f, 0xa8, 0x97, 0x5e, 0x47, 0x2a, 0x4a, 0x11,
     0xa8, 0xdb, 0xe3, 0x20, 0x87, 0x24, 0xbd, 0x8a, 0x33, 0xa0, 0xff, 0x08, 0x74, 0xac, 0x16, 0xd7,
