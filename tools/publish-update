@@ -7,7 +7,7 @@
 
 PLACE is HOST:FOLDER (by default hetzner:/srv/gstream-updates, served at the address in src/update.c)
 or a local folder. It gets files/SHA256 for each file of the build, a manifest naming the build and
-each file's name, hash and size, the manifest's signature with the key in
+each file's name, hash and size, the manifest's signature (as manifest.txt.sig and manifest.sig) with the key in
 ~/.config/gstream/update-signing.key, and gstream-windows.zip of the same files for a first install. The
 files go up before the manifest, which goes up whole, so a copy never reads one that names a file
 not yet there. The build is the commit's short hash, so the tree must be clean; a copy runs it only
@@ -66,21 +66,23 @@ def main():
         manifest = "\n".join(lines) + "\n"
         with open(os.path.join(out, "manifest.txt"), "w") as f:
             f.write(manifest)
-        with open(os.path.join(out, "manifest.sig"), "w") as f:
-            f.write(key.sign(manifest.encode()).hex() + "\n")
+        # (manifest.txt.sig is where gesso's gs_update looks; manifest.sig, for copies from before it)
+        for name in ("manifest.txt.sig", "manifest.sig"):
+            with open(os.path.join(out, name), "w") as f:
+                f.write(key.sign(manifest.encode()).hex() + "\n")
         if ":" in args.to:
             host, place = args.to.split(":", 1)
             run("ssh", "-o", "BatchMode=yes", host, f"mkdir -p {place}/files {place}/next")
             run("scp", "-q", *[os.path.join(out, "files", d) for d in os.listdir(os.path.join(out, "files"))], f"{host}:{place}/files/")
-            run("scp", "-q", os.path.join(out, "manifest.txt"), os.path.join(out, "manifest.sig"), os.path.join(out, "gstream-windows.zip"), f"{host}:{place}/next/")
+            run("scp", "-q", os.path.join(out, "manifest.txt"), os.path.join(out, "manifest.txt.sig"), os.path.join(out, "manifest.sig"), os.path.join(out, "gstream-windows.zip"), f"{host}:{place}/next/")
             # (the signature first, then the manifest it signs: one read between the two sees a
             # mismatch and is tried again a minute later)
-            run("ssh", "-o", "BatchMode=yes", host, f"cd {place} && mv next/gstream-windows.zip . && mv next/manifest.sig . && mv next/manifest.txt . && chmod -R a+rX {place}")
+            run("ssh", "-o", "BatchMode=yes", host, f"cd {place} && mv next/gstream-windows.zip . && mv next/manifest.txt.sig . && mv next/manifest.sig . && mv next/manifest.txt . && chmod -R a+rX {place}")
         else:
             os.makedirs(os.path.join(args.to, "files"), exist_ok=True)
             for d in os.listdir(os.path.join(out, "files")):
                 shutil.copyfile(os.path.join(out, "files", d), os.path.join(args.to, "files", d))
-            for name in ("gstream-windows.zip", "manifest.sig", "manifest.txt"):
+            for name in ("gstream-windows.zip", "manifest.txt.sig", "manifest.sig", "manifest.txt"):
                 shutil.copyfile(os.path.join(out, name), os.path.join(args.to, name + ".part"))
                 os.replace(os.path.join(args.to, name + ".part"), os.path.join(args.to, name))
     print(f"published build {build} to {args.to}")
