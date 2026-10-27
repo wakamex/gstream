@@ -43,9 +43,16 @@ gh attestation verify ASSET --repo wakamex/gstream \
 gh release verify-asset vX.Y.Z ASSET --repo wakamex/gstream
 ```
 
-## Builds that update themselves
+## Test builds update themselves
 
-Release builds never update themselves. `tools/publish-update` builds the current commit for Windows with `-Dbuild=` set to its short hash, signs a manifest of its files with the Ed25519 key in `~/.config/gstream/update-signing.key`, and uploads it to the update server named in `src/main.c`. A copy built that way and running on its own data folder checks the manifest every minute through gesso's `gs_update`; when another build is published it fetches the changed files, checks each against its SHA-256, puts them in place, and once the window has been left alone for 10 seconds quits as usual and starts the new build, which goes on with the channel that was playing. The server's `gstream-windows.zip` holds the same files, for a first install.
+Release builds never update themselves. `tools/publish-update` builds the current commit for Windows as a test build, with `-Dbuild=` set to its short hash, signs a manifest of its files with the Ed25519 key in `~/.config/gstream/update-signing.key`, and uploads it to the update server named in `src/main.c`. The server also gets `gstream-test-windows.zip` of the same files, for a first install, and the page that offers it, http://updates.waka.mx/gstream/index.html, which warns that the build updates itself and restarts. Public pages link the release builds and point to a test build only with that warning.
+
+A test build follows the policy gesso's `gs_update` provides:
+
+- Its window title and About gstream name the test build. On its first run it asks whether to keep itself up to date, and looks for nothing until the answer is yes; About gstream turns that off again. The answer is kept in `update.txt` in the data folder.
+- Once it has said yes, it checks the manifest every minute. When another build is published it fetches the changed files, checks each against its SHA-256, and puts them in place.
+- It restarts into the new build only when nothing is playing, the window has been left alone for two minutes, and the last restart for an update was 15 minutes ago or more; "Restart to update" in the account menu or About gstream does it at once. The new build comes back with what was shown (the channel, theater mode, the window's place), does not take the keyboard, and says once which build it now is.
+- A new build that ends uncleanly three times in its first three minutes is replaced by the build before it, which says so.
 
 ## One-time setup
 

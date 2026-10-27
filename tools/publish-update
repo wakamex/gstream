@@ -8,7 +8,8 @@
 PLACE is HOST:FOLDER (by default hetzner:/srv/gstream-updates, served at the address in src/main.c)
 or a local folder. It gets files/SHA256 for each file of the build, a manifest naming the build and
 each file's name, hash and size, the manifest's signature (as manifest.txt.sig and manifest.sig) with the key in
-~/.config/gstream/update-signing.key, and gstream-windows.zip of the same files for a first install. The
+~/.config/gstream/update-signing.key, gstream-test-windows.zip of the same files for a first install, and
+index.html, the page that offers it and says that it is a test build that updates itself. The
 files go up before the manifest, which goes up whole, so a copy never reads one that names a file
 not yet there. The build is the commit's short hash, so the tree must be clean; a copy runs it only
 when it was built with that name (-Dbuild), which this does.
@@ -27,6 +28,15 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILES = ["gstream.exe"]
+# The page that offers a first install, with the warning a test build owes whoever downloads it.
+PAGE = """<!doctype html>
+<meta charset="utf-8">
+<title>gstream test build {build}</title>
+<h1>gstream test build {build}</h1>
+<p>This is a test build for Windows, published from each commit. It updates itself: once you say yes on its first run, it downloads every new test build and restarts into it when nothing is playing and you have left it alone for a couple of minutes. You can turn that off again in About gstream.</p>
+<p><a href="gstream-test-windows.zip">gstream-test-windows.zip</a></p>
+<p>Release builds never update themselves: they are on <a href="https://github.com/wakamex/gstream/releases">gstream's releases page</a>.</p>
+"""
 KEY = os.path.expanduser("~/.config/gstream/update-signing.key")
 
 
@@ -54,7 +64,7 @@ def main():
     with tempfile.TemporaryDirectory() as out:
         os.makedirs(os.path.join(out, "files"))
         lines = [f"build {build}"]
-        with zipfile.ZipFile(os.path.join(out, "gstream-windows.zip"), "w", zipfile.ZIP_DEFLATED) as z:
+        with zipfile.ZipFile(os.path.join(out, "gstream-test-windows.zip"), "w", zipfile.ZIP_DEFLATED) as z:
             for name in FILES:
                 path = os.path.join(folder, name)
                 with open(path, "rb") as f:
@@ -66,6 +76,8 @@ def main():
         manifest = "\n".join(lines) + "\n"
         with open(os.path.join(out, "manifest.txt"), "w") as f:
             f.write(manifest)
+        with open(os.path.join(out, "index.html"), "w") as f:
+            f.write(PAGE.format(build=build))
         # (manifest.txt.sig is where gesso's gs_update looks; manifest.sig, for copies from before it)
         for name in ("manifest.txt.sig", "manifest.sig"):
             with open(os.path.join(out, name), "w") as f:
@@ -74,15 +86,15 @@ def main():
             host, place = args.to.split(":", 1)
             run("ssh", "-o", "BatchMode=yes", host, f"mkdir -p {place}/files {place}/next")
             run("scp", "-q", *[os.path.join(out, "files", d) for d in os.listdir(os.path.join(out, "files"))], f"{host}:{place}/files/")
-            run("scp", "-q", os.path.join(out, "manifest.txt"), os.path.join(out, "manifest.txt.sig"), os.path.join(out, "manifest.sig"), os.path.join(out, "gstream-windows.zip"), f"{host}:{place}/next/")
+            run("scp", "-q", os.path.join(out, "manifest.txt"), os.path.join(out, "manifest.txt.sig"), os.path.join(out, "manifest.sig"), os.path.join(out, "gstream-test-windows.zip"), os.path.join(out, "index.html"), f"{host}:{place}/next/")
             # (the signature first, then the manifest it signs: one read between the two sees a
             # mismatch and is tried again a minute later)
-            run("ssh", "-o", "BatchMode=yes", host, f"cd {place} && mv next/gstream-windows.zip . && mv next/manifest.txt.sig . && mv next/manifest.sig . && mv next/manifest.txt . && chmod -R a+rX {place}")
+            run("ssh", "-o", "BatchMode=yes", host, f"cd {place} && rm -f gstream-windows.zip && mv next/gstream-test-windows.zip next/index.html . && mv next/manifest.txt.sig . && mv next/manifest.sig . && mv next/manifest.txt . && chmod -R a+rX {place}")
         else:
             os.makedirs(os.path.join(args.to, "files"), exist_ok=True)
             for d in os.listdir(os.path.join(out, "files")):
                 shutil.copyfile(os.path.join(out, "files", d), os.path.join(args.to, "files", d))
-            for name in ("gstream-windows.zip", "manifest.txt.sig", "manifest.sig", "manifest.txt"):
+            for name in ("gstream-test-windows.zip", "index.html", "manifest.txt.sig", "manifest.sig", "manifest.txt"):
                 shutil.copyfile(os.path.join(out, name), os.path.join(args.to, name + ".part"))
                 os.replace(os.path.join(args.to, name + ".part"), os.path.join(args.to, name))
     print(f"published build {build} to {args.to}")

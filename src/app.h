@@ -49,9 +49,11 @@ typedef struct {
     bool muted;
 
     bool persist;          // settings are kept between runs (not in the test modes or --demo)
-    gs_update *update;     // looking for a newer build, in a published one
+    gs_update *update;     // looking for a newer build, in a published (test) one
     uint64_t input_at;     // when a key, a button or the pointer was last used
     bool restart;          // quitting to start the newer build in place
+    char notice[160];      // said once at the top of the window, such as the build an update brought
+    uint64_t notice_until;
 
     // Options and test modes.
     bool show_stats, demo, software, audio_only;
@@ -59,6 +61,7 @@ typedef struct {
     const char *shot;
     double shot_at, quit_at;
     const char *stats_file;
+    const char *data;      // --data, the data folder named
     uint64_t started, stats_next;
     int frames;
 } app;
@@ -69,3 +72,4 @@ void sign_in_cancel(app *a);
 void sign_out(app *a);
 void watch(app *a, const char *login, const char *name);
 void set_full_screen(app *a, bool on);  // full screen shows the player alone
+void say(app *a, const char *text);  // a notice at the top of the window, for 10 seconds

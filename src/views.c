@@ -282,6 +282,7 @@ static void draw_main(app *a, gs_rect m) {
         gs_ui_menu_item(ui, who, false);
         if (gs_ui_menu_item(ui, a->show_stats ? "Hide diagnostics (F1)" : "Diagnostics (F1)", true)) a->show_stats = !a->show_stats;
         if (gs_ui_menu_item(ui, "About gstream", true)) a->about = true;
+        if (gs_update_ready(a->update) && gs_ui_menu_item(ui, "Restart to update", true)) a->restart = true;
         if (gs_ui_menu_item(ui, "Sign out", !a->demo)) sign_out(a);
         gs_ui_menu_end(ui);
     }
@@ -295,11 +296,13 @@ static void draw_theater(app *a, gs_rect win) {
     if (gs_ui_key(a->ui, SDLK_ESCAPE, 0)) leave_player(a);
 }
 
-// What gstream is built from, with each part's licence.
+// What gstream is built from, with each part's licence; for a test build, its name and whether it
+// keeps itself up to date.
 static void draw_about(app *a, gs_rect win) {
     gs_ui *ui = a->ui;
     const gs_ui_style *st = gs_ui_style_of(ui);
-    gs_rect card = { win.x + (win.w - 480) / 2, win.y + (win.h - 360) / 2, 480, 360 };
+    float tall = a->update ? 360 + 8 + 22 + st->row : 360;
+    gs_rect card = { win.x + (win.w - 480) / 2, win.y + (win.h - tall) / 2, 480, tall };
     gs_ui_fill(ui, card, st->panel);
     gs_ui_frame(ui, card, st->border);
     gs_rect c = gs_inset(card, 24);
@@ -317,8 +320,56 @@ static void draw_about(app *a, gs_rect win) {
     gs_ui_text(ui, gs_cut_top(&c, 20), "The licences are in the licenses folder beside the program.", st->small_px, st->muted, -1);
     gs_ui_text(ui, gs_cut_top(&c, 20), "FFmpeg's source is attached to each release.", st->small_px, st->muted, -1);
     gs_rect close = gs_cut_bottom(&c, st->row);
+    if (a->update) {
+#ifdef GSTREAM_BUILD
+        gs_cut_top(&c, 8);
+        gs_ui_text(ui, gs_cut_top(&c, 22), "Test build " GSTREAM_BUILD, st->small_px, st->warning, -1);
+#endif
+        bool on = gs_update_consent(a->update) == GS_UPDATE_YES;
+        if (gs_ui_toggle(ui, gs_cut_top(&c, st->row), "Keep it up to date", &on)) gs_update_set_consent(a->update, on);
+        if (gs_update_ready(a->update) && gs_ui_button_primary(ui, gs_cut_left(&close, 150), "Restart to update")) a->restart = true;
+    }
     close = gs_cut_right(&close, 90);
     if (gs_ui_button(ui, close, "Close") || gs_ui_key(ui, SDLK_ESCAPE, 0) || gs_ui_key(ui, SDLK_RETURN, 0)) a->about = false;
+}
+
+// A test build's question on its first run: whether it may keep itself up to date. It does not look
+// for updates until the answer is yes, and the about card can change it.
+static void draw_consent(app *a, gs_rect win) {
+    gs_ui *ui = a->ui;
+    const gs_ui_style *st = gs_ui_style_of(ui);
+    gs_rect card = { win.x + (win.w - 480) / 2, win.y + (win.h - 240) / 2, 480, 240 };
+    gs_ui_fill(ui, card, st->panel);
+    gs_ui_frame(ui, card, st->border);
+    gs_rect c = gs_inset(card, 24);
+#ifdef GSTREAM_BUILD
+    gs_ui_text(ui, gs_cut_top(&c, 36), "gstream test build " GSTREAM_BUILD, 24, st->text, -1);
+#endif
+    const char *notice = "This is a test build. It can keep itself up to date with every new version: it downloads each one "
+                         "and restarts when nothing is playing and you have left it alone for a couple of minutes, coming "
+                         "back as it was. You can turn this off again in About gstream.";
+    gs_ui_text_wrapped(ui, gs_cut_top(&c, 110), notice, st->text_px, st->text);
+    gs_rect buttons = gs_cut_bottom(&c, st->row);
+    if (gs_ui_button_primary(ui, gs_cut_right(&buttons, 170), "Keep it up to date") || gs_ui_key(ui, SDLK_RETURN, 0)) gs_update_set_consent(a->update, true);
+    gs_cut_right(&buttons, 8);
+    if (gs_ui_button(ui, gs_cut_right(&buttons, 130), "Don't update") || gs_ui_key(ui, SDLK_ESCAPE, 0)) gs_update_set_consent(a->update, false);
+}
+
+void say(app *a, const char *text) {
+    SDL_strlcpy(a->notice, text, sizeof a->notice);
+    a->notice_until = SDL_GetTicks() + 10000;
+}
+
+// The notice, over whatever is shown.
+static void draw_notice(app *a, gs_rect win) {
+    if (SDL_GetTicks() >= a->notice_until) return;
+    gs_ui *ui = a->ui;
+    const gs_ui_style *st = gs_ui_style_of(ui);
+    float w = gs_ui_text_width(ui, a->notice, st->text_px) + 32;
+    gs_rect r = { win.x + (win.w - w) / 2, win.y + 12, w, st->row };
+    gs_ui_fill(ui, r, st->panel);
+    gs_ui_frame(ui, r, st->border);
+    gs_ui_text(ui, r, a->notice, st->text_px, st->text, 0);
 }
 
 void views_draw(app *a) {
@@ -328,7 +379,10 @@ void views_draw(app *a) {
     SDL_LockMutex(a->lock);
     auth_state auth = a->auth;
     SDL_UnlockMutex(a->lock);
-    if (a->about) {
+    gs_rect all = win;
+    if (gs_update_consent(a->update) == GS_UPDATE_ASK) {
+        draw_consent(a, win);  // (in place of the rest, as the about card is)
+    } else if (a->about) {
         draw_about(a, win);  // (in place of the rest, which would otherwise take its clicks)
     } else if (auth != SIGNED_IN) {
         draw_sign_in(a, win);
@@ -343,4 +397,5 @@ void views_draw(app *a) {
         if (gs_ui_focused(ui, "filter") && (gs_ui_key(ui, SDLK_ESCAPE, 0) || gs_ui_key(ui, SDLK_DOWN, 0) || gs_ui_key(ui, SDLK_RETURN, 0))) gs_ui_focus(ui, "channels");
         if (!gs_ui_focused(ui, "filter") && !gs_ui_focused(ui, "channels")) gs_ui_focus(ui, "channels");
     }
+    draw_notice(a, all);
 }
