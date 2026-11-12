@@ -29,7 +29,7 @@ typedef struct {
     void (*wake)(void);
     float volume;           // 0 to 1
     bool muted;
-    uint64_t rejoin_until;  // after the stream ended, the channel is looked for again until then (SDL_GetTicks time)
+    uint64_t rejoin_since;  // when the channel was found offline or its stream ended (SDL_GetTicks time), 0 while it plays; it is looked for again until it comes back or another is picked
     uint64_t rejoin_at;     // when it is next looked for
 } player;
 
@@ -43,4 +43,4 @@ void player_retry(player *p, gs_jobs *jobs);  // starts the same channel again
 // Called every frame: after a channel's stream ends, starts it again every 10 seconds for 10 minutes,
 // since a streamer who restarts the broadcast comes back under a new playlist.
 void player_poll(player *p, gs_jobs *jobs);
-bool player_rejoining(player *p);  // looking for the channel to come back (with p->lock held)
+bool player_rejoining(player *p);  // waiting for the channel to come back (with p->lock held)

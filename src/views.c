@@ -174,7 +174,7 @@ static void draw_stage(app *a, gs_rect stage) {
     gs_live *live = p->live;
     char name[128], message[200];
     SDL_strlcpy(name, p->name, sizeof name), SDL_strlcpy(message, p->message, sizeof message);
-    bool ad = p->ad, video = p->video, rejoining = player_rejoining(p);
+    bool ad = p->ad, video = p->video, rejoining = player_rejoining(p), network = p->error == TW_NETWORK;
     SDL_UnlockMutex(p->lock);
     SDL_FRect src;
     SDL_Texture *t = live ? gs_live_frame(live, &src) : NULL;
@@ -193,7 +193,7 @@ static void draw_stage(app *a, gs_rect stage) {
     else if (info.state == GS_LIVE_BUFFERING) status = "Buffering\xE2\x80\xA6";
     else if (!t && video) status = "Waiting for the picture\xE2\x80\xA6";
     bool failed = state == PLAYER_FAILED || info.state == GS_LIVE_FAILED || info.state == GS_LIVE_ENDED;
-    if (rejoining && (failed || state == PLAYER_RESOLVING)) status = "The stream ended. Waiting for it to come back\xE2\x80\xA6";
+    if (rejoining && (failed || state == PLAYER_RESOLVING) && !network) status = "Offline. Waiting for the stream to come back\xE2\x80\xA6";
     if (status) {
         gs_rect mid = { stage.x, stage.y + stage.h / 2 - 40, stage.w, 80 };
         if (state != PLAYER_IDLE) gs_ui_text(ui, gs_cut_top(&mid, 40), name, 22, st->text, 0);

@@ -481,10 +481,10 @@ SDL_AppResult SDL_AppEvent(void *state, SDL_Event *e) {
 }
 
 // Whether gstream is in the middle of something an update's restart would break: a channel playing,
-// or being looked for.
+// or being found (waiting for an offline one to come back is not, and goes on after the restart).
 static bool busy(app *a) {
     SDL_LockMutex(a->player.lock);
-    bool playing = a->player.state != PLAYER_IDLE;
+    bool playing = a->player.state != PLAYER_IDLE && !player_rejoining(&a->player);
     SDL_UnlockMutex(a->player.lock);
     return playing;
 }

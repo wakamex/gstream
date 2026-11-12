@@ -136,7 +136,7 @@ static void begin(player *p, gs_jobs *jobs, const char *login, const char *name,
 
 void player_start(player *p, gs_jobs *jobs, const char *login, const char *name, const char *quality, bool video) {
     SDL_LockMutex(p->lock);
-    p->rejoin_until = 0;
+    p->rejoin_since = 0;
     SDL_UnlockMutex(p->lock);
     begin(p, jobs, login, name, quality, video);
 }
@@ -147,7 +147,7 @@ void player_stop(player *p) {
     double measured = live ? gs_live_get_info(live).bandwidth : 0;
     if (measured > 0) p->bandwidth = measured;  // (where the next channel starts)
     void *user = p->live_user;
-    p->live = NULL, p->live_user = NULL, p->generation++, p->state = PLAYER_IDLE, p->ad = false;
+    p->live = NULL, p->live_user = NULL, p->generation++, p->state = PLAYER_IDLE, p->ad = false, p->rejoin_since = 0;
     SDL_UnlockMutex(p->lock);
     gs_live_stop(live);
     free(user);
@@ -162,10 +162,13 @@ void player_retry(player *p, gs_jobs *jobs) {
     begin(p, jobs, login, name, NULL, video);
 }
 
-#define REJOIN_FOR_MS 600000
-#define REJOIN_EVERY_MS 10000
+// A channel that is offline, or whose stream ended, is looked for again every 10 seconds for 10
+// minutes (a restarted stream is usually back by then), and every minute after that.
+#define REJOIN_SOON_MS 600000
+#define REJOIN_SOON_EVERY_MS 10000
+#define REJOIN_LATER_EVERY_MS 60000
 
-bool player_rejoining(player *p) { return p->rejoin_until && SDL_GetTicks() < p->rejoin_until; }
+bool player_rejoining(player *p) { return p->rejoin_since != 0; }
 
 void player_poll(player *p, gs_jobs *jobs) {
     uint64_t now = SDL_GetTicks();
@@ -173,10 +176,11 @@ void player_poll(player *p, gs_jobs *jobs) {
     gs_live_state s = p->live ? gs_live_get_info(p->live).state : GS_LIVE_STARTING;
     bool ended = p->state == PLAYER_PLAYING && (s == GS_LIVE_ENDED || s == GS_LIVE_FAILED) && SDL_strcmp(p->login, "url");
     bool offline = p->state == PLAYER_FAILED && (p->error == TW_OFFLINE || p->error == TW_NETWORK);
-    if (s == GS_LIVE_PLAYING) p->rejoin_until = 0;
-    if (ended && !p->rejoin_until) p->rejoin_until = now + REJOIN_FOR_MS, p->rejoin_at = now;
-    bool again = (ended || offline) && player_rejoining(p) && now >= p->rejoin_at;
-    if (again) p->rejoin_at = now + REJOIN_EVERY_MS;
+    if (s == GS_LIVE_PLAYING) p->rejoin_since = 0;
+    if (ended && !p->rejoin_since) p->rejoin_since = now, p->rejoin_at = now;
+    if (offline && !p->rejoin_since) p->rejoin_since = now, p->rejoin_at = now + REJOIN_SOON_EVERY_MS;
+    bool again = (ended || offline) && now >= p->rejoin_at;
+    if (again) p->rejoin_at = now + (now - p->rejoin_since < REJOIN_SOON_MS ? REJOIN_SOON_EVERY_MS : REJOIN_LATER_EVERY_MS);
     SDL_UnlockMutex(p->lock);
     if (again) player_retry(p, jobs);
 }
