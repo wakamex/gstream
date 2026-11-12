@@ -33,7 +33,7 @@ PAGE = """<!doctype html>
 <meta charset="utf-8">
 <title>gstream test build {build}</title>
 <h1>gstream test build {build}</h1>
-<p>This is a test build for Windows, published from each commit. It updates itself: once you say yes on its first run, it downloads every new test build and restarts into it when nothing is playing and you have left it alone for a couple of minutes. You can turn that off again in About gstream.</p>
+<p>This is a test build for Windows, published from each commit. It updates itself: once you say yes on its first run, it downloads every new test build and restarts into it when you have left it alone for a couple of minutes, even while a channel plays, which comes back after a few seconds. You can turn that off again in About gstream.</p>
 <p><a href="gstream-test-windows.zip">gstream-test-windows.zip</a></p>
 <p>Release builds never update themselves: they are on <a href="https://github.com/wakamex/gstream/releases">gstream's releases page</a>.</p>
 """

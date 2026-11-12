@@ -51,7 +51,7 @@ A test build follows the policy gesso's `gs_update` provides:
 
 - Its window title and About gstream name the test build. On its first run it asks whether to keep itself up to date, and looks for nothing until the answer is yes; About gstream turns that off again. The answer is kept in `update.txt` in the data folder.
 - Once it has said yes, it checks the manifest every minute. When another build is published it fetches the changed files, checks each against its SHA-256, and puts them in place.
-- It restarts into the new build only when nothing is playing, the window has been left alone for two minutes, and the last restart for an update was 15 minutes ago or more; "Restart to update" in the account menu or About gstream does it at once. The new build comes back with what was shown (the channel, theater mode, the window's place), does not take the keyboard, and says once which build it now is.
+- It restarts into the new build when the window has been left alone for two minutes, even while a channel plays (a test build is a development copy), unless a sign-in is under way, and when the last restart for an update was 15 minutes ago or more; "Restart to update" in the account menu or About gstream does it at once. The new build comes back with what was shown (the channel, theater mode, the window's place), does not take the keyboard, and says once which build it now is.
 - A new build that ends uncleanly three times in its first three minutes is replaced by the build before it, which says so.
 
 ## One-time setup

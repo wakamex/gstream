@@ -346,7 +346,7 @@ static void draw_consent(app *a, gs_rect win) {
     gs_ui_text(ui, gs_cut_top(&c, 36), "gstream test build " GSTREAM_BUILD, 24, st->text, -1);
 #endif
     const char *notice = "This is a test build. It can keep itself up to date with every new version: it downloads each one "
-                         "and restarts when nothing is playing and you have left it alone for a couple of minutes, coming "
+                         "and restarts when you have left it alone for a couple of minutes, even while a channel plays, coming "
                          "back as it was. You can turn this off again in About gstream.";
     gs_ui_text_wrapped(ui, gs_cut_top(&c, 110), notice, st->text_px, st->text);
     gs_rect buttons = gs_cut_bottom(&c, st->row);

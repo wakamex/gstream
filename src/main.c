@@ -480,17 +480,14 @@ SDL_AppResult SDL_AppEvent(void *state, SDL_Event *e) {
     return SDL_APP_CONTINUE;
 }
 
-// Whether gstream is in the middle of something an update's restart would break: a channel playing,
-// or being found (waiting for an offline one to come back is not, and goes on after the restart), or
-// signing in, whose code would be lost.
+// Whether gstream is in the middle of something an update's restart would break: signing in, whose
+// code would be lost. A channel playing is not: test builds are development copies, and the new build
+// comes back on the same channel after a few seconds.
 static bool busy(app *a) {
-    SDL_LockMutex(a->player.lock);
-    bool playing = a->player.state != PLAYER_IDLE && !player_rejoining(&a->player);
-    SDL_UnlockMutex(a->player.lock);
     SDL_LockMutex(a->lock);
     bool signing_in = a->auth == SIGNING_IN;
     SDL_UnlockMutex(a->lock);
-    return playing || signing_in;
+    return signing_in;
 }
 
 // When the window should next draw on its own: every frame while video plays; otherwise for the
@@ -515,7 +512,7 @@ static void schedule(app *a) {
         int until = next > now ? (int)(next - now) : 0;
         if (ms < 0 || until < ms) ms = until + 1;
     }
-    if (gs_update_ready(a->update) && !playing) {  // (to ask gs_update_due once the window has been left alone, then every 30 seconds)
+    if (gs_update_ready(a->update)) {  // (to ask gs_update_due once the window has been left alone, then every 30 seconds)
         int until = (int)((int64_t)(a->input_at + 120000) - (int64_t)SDL_GetTicks());
         until = until > 0 ? until : 30000;
         if (ms < 0 || until < ms) ms = until + 1;
@@ -530,7 +527,7 @@ static void schedule(app *a) {
 
 SDL_AppResult SDL_AppIterate(void *state) {
     app *a = state;
-    // A newer build is in place: once nothing plays and the window has been left alone for two minutes
+    // A newer build is in place: once the window has been left alone for two minutes, playing or not
     // (and the last restart was 15 minutes ago), or when the user asks, gstream quits as usual, saving
     // what it showed, and the new build starts and goes on with it.
     if (a->restart || gs_update_due(a->update, busy(a), a->input_at)) return a->restart = true, SDL_APP_SUCCESS;
