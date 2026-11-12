@@ -481,12 +481,16 @@ SDL_AppResult SDL_AppEvent(void *state, SDL_Event *e) {
 }
 
 // Whether gstream is in the middle of something an update's restart would break: a channel playing,
-// or being found (waiting for an offline one to come back is not, and goes on after the restart).
+// or being found (waiting for an offline one to come back is not, and goes on after the restart), or
+// signing in, whose code would be lost.
 static bool busy(app *a) {
     SDL_LockMutex(a->player.lock);
     bool playing = a->player.state != PLAYER_IDLE && !player_rejoining(&a->player);
     SDL_UnlockMutex(a->player.lock);
-    return playing;
+    SDL_LockMutex(a->lock);
+    bool signing_in = a->auth == SIGNING_IN;
+    SDL_UnlockMutex(a->lock);
+    return playing || signing_in;
 }
 
 // When the window should next draw on its own: every frame while video plays; otherwise for the
